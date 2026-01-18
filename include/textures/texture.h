@@ -1,11 +1,12 @@
 #ifndef TEXTURE_H
 #define TEXTURE_H
 
-#include "color.h"
-#include "utils.h" // Para clamp
-#include "vec3.h"
+#include "../colors/color.h"
+#include "../vectors/vec3.h"
+#include "utils.h" // Para clamp (mesmo diretório)
 #include <cmath>
 #include <memory>
+
 
 // Interface base para texturas (Requisito 1.3.3)
 class texture {

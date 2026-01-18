@@ -1,8 +1,8 @@
 #ifndef MATERIAL_H
 #define MATERIAL_H
 
-#include "color.h"
-#include "texture.h"
+#include "../colors/color.h"
+#include "../textures/texture.h"
 #include <memory>
 
 // Material com modelo de Phong (Requisito 1.3.2 - pelo menos 4 materiais)

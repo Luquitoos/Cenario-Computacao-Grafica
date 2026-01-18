@@ -22,26 +22,26 @@
 #include <vector>
 
 #define STB_IMAGE_IMPLEMENTATION
-#include "../include/camera.h"
-#include "../include/color.h"
-#include "../include/cone.h"
-#include "../include/cylinder.h"
-#include "../include/hittable.h"
-#include "../include/hittable_list.h"
-#include "../include/light.h"
-#include "../include/mat4.h"
-#include "../include/material.h"
-#include "../include/mesh.h"
-#include "../include/plane.h"
-#include "../include/quaternion.h"
-#include "../include/ray.h"
-#include "../include/sphere.h"
-#include "../include/texture.h"
-#include "../include/transform.h"
-#include "../include/triangle.h"
-#include "../include/utils.h"
-#include "../include/vec3.h"
-#include "../include/vec4.h"
+#include "../include/camera/camera.h"
+#include "../include/cenario/hittable.h"
+#include "../include/cenario/hittable_list.h"
+#include "../include/cenario/light.h"
+#include "../include/colors/color.h"
+#include "../include/malha/mesh.h"
+#include "../include/malha/triangle.h"
+#include "../include/material/material.h"
+#include "../include/object/cone.h"
+#include "../include/object/cylinder.h"
+#include "../include/object/plane.h"
+#include "../include/object/sphere.h"
+#include "../include/ray/ray.h"
+#include "../include/textures/texture.h"
+#include "../include/textures/utils.h"
+#include "../include/transform/quaternion.h"
+#include "../include/transform/transform.h"
+#include "../include/vectors/mat4.h"
+#include "../include/vectors/vec3.h"
+#include "../include/vectors/vec4.h"
 
 #include <GL/freeglut.h>
 
@@ -63,9 +63,11 @@ bool need_redraw = true;
 std::string picked_object = "";
 
 // Câmera interativa
-point3 cam_eye(400, 200, 100); // Posição inicial da câmera
-point3 cam_at(250, 100, 250);  // Olhando para o centro da cena
-double cam_speed = 30.0;       // Velocidade de movimento
+// NOTA: Coordenadas ajustadas para primeiro octante (x, y, z >= 0)
+point3 cam_eye(1050, 200, 750); // Posição inicial (400+650, 200, 100+650)
+point3 cam_at(900, 100,
+              900); // Olhando para o centro da cena (250+650, 100, 250+650)
+double cam_speed = 30.0; // Velocidade de movimento
 
 // ==================== MODELO DE ILUMINAÇÃO PHONG ====================
 color calculate_lighting(const hit_record &rec, const ray &r,
@@ -174,8 +176,10 @@ void create_scene() {
   auto mat_leaves = materials::leaves();
   auto mat_lake_rock = materials::lake_rock();
 
-  const double CX = 250.0;
-  const double CZ = 250.0;
+  // Centro da cena - AJUSTADO para garantir primeiro octante (x, y, z >= 0)
+  // Offset de +650 aplicado para evitar coordenadas negativas nos cliffs
+  const double CX = 900.0;
+  const double CZ = 900.0;
 
   // ===== AMBIENTE ÉPICO (GRUTA NATURAL) =====
 
@@ -206,22 +210,26 @@ void create_scene() {
   }
 
   // ===== WATERFALL SYSTEM (Cachoeira Grande + Trilha + Lago) =====
-  // Posição: (60, Y, 480) -> Mais a frente para evitar colisão com paredes, e
-  // conectando ao lago
-  double WX = 60.0;
-  double WZ = 440.0; // Movido para frente (480 -> 440)
+  // Posição ajustada: offset +650 aplicado
+  double WX = 710.0;  // 60 + 650 = 710 (primeiro octante)
+  double WZ = 1090.0; // 440 + 650 = 1090
 
-  // 1. A Queda D'água (Muito maior)
+  // 1. A Queda D'água (COORDENADAS POSITIVAS)
+  // Definida com coordenadas positivas na origem e depois transformada
   auto wf_sheet = std::make_shared<box_mesh>(
-      point3(-100, 0, -8), point3(100, 500, 8), mat_water, "Waterfall Sheet");
+      point3(0, 0, 0), point3(200, 500, 16), mat_water, "Waterfall Sheet");
 
-  // Transformação: Rotação 45 graus e Translação
+  // Transformação: Translação para centralizar + Rotação 45 graus + Translação
+  // final
   double angle_deg = -45.0;
+  mat4 Tcenter = mat4::translate(-100, 0, -8); // Mover centro para origem
+  mat4 Tcenter_inv = mat4::translate_inverse(-100, 0, -8);
   mat4 R = mat4::rotate_y(degrees_to_radians(angle_deg));
   mat4 Rinv = mat4::rotate_y_inverse(degrees_to_radians(angle_deg));
   mat4 T = mat4::translate(WX, 20, WZ);
   mat4 Tinv = mat4::translate_inverse(WX, 20, WZ);
-  world.add(std::make_shared<transform>(wf_sheet, T * R, Rinv * Tinv));
+  world.add(std::make_shared<transform>(wf_sheet, T * R * Tcenter,
+                                        Tcenter_inv * Rinv * Tinv));
 
   // 2. Lago da Cachoeira (Maior)
   world.add(std::make_shared<cylinder>(point3(WX, 2, WZ), vec3(0, 1, 0), 120, 5,
@@ -585,9 +593,8 @@ void create_scene() {
 
   // Luz 4 (Point Light - Cachoeira Glow)
   lights.push_back(
-      std::make_shared<point_light>(point3(60, 50,
-                                           480), // Base da cachoeira
-                                                 // (Nova posição)
+      std::make_shared<point_light>(point3(WX, 50,
+                                           WZ), // Base da cachoeira
                                     color(0.4, 0.7,
                                           1.0), // Azul claro
                                     0.6, 0.003, 0.00005));

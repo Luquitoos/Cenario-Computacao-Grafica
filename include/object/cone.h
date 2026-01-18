@@ -1,11 +1,10 @@
 #ifndef CONE_H
 #define CONE_H
 
-#include "hittable.h"
-#include "vec3.h"
+#include "../cenario/hittable.h"
+#include "../vectors/vec3.h"
 #include <algorithm>
 #include <cmath>
-
 
 // CONE (Requisito 1.3.1)
 class cone : public hittable {

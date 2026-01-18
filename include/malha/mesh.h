@@ -1,12 +1,13 @@
 #ifndef MESH_H
 #define MESH_H
 
-#include "hittable.h"
-#include "hittable_list.h"
+#include "../cenario/hittable.h"
+#include "../cenario/hittable_list.h"
+#include "../vectors/vec3.h"
 #include "triangle.h"
-#include "vec3.h"
 #include <memory>
 #include <vector>
+
 
 // MALHA - Paralelepípedo (Box) composto de triângulos (Requisito 1.3.1)
 class box_mesh : public hittable {
