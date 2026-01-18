@@ -1,7 +1,7 @@
 /*
  * TRABALHO DE COMPUTAÇÃO GRÁFICA - RAY CASTER
  * Tema: Espada na Pedra (Estilo Rei Arthur)
- * 
+ *
  * Requisitos Atendidos:
  * - 1.3.1: Esfera, Cilindro, Cone, Malha
  * - 1.3.2: 4+ materiais distintos
@@ -12,42 +12,43 @@
  * - 3: Projeção Perspectiva (zoom in/out), Ortográfica, Oblíqua
  * - 4: Sombras (shadow rays)
  * - 5: Pick + Interface Gráfica (GLUT)
- * - 6: Imagem 500x500 pixels
+ * - 6: Imagem 800x800 pixels
  */
 
+#include <cmath>
 #include <iostream>
-#include <vector>
 #include <memory>
 #include <string>
-#include <cmath>
+#include <vector>
 
+#define STB_IMAGE_IMPLEMENTATION
+#include "../include/camera.h"
+#include "../include/color.h"
+#include "../include/cone.h"
+#include "../include/cylinder.h"
+#include "../include/hittable.h"
+#include "../include/hittable_list.h"
+#include "../include/light.h"
+#include "../include/mat4.h"
+#include "../include/material.h"
+#include "../include/mesh.h"
+#include "../include/plane.h"
+#include "../include/quaternion.h"
+#include "../include/ray.h"
+#include "../include/sphere.h"
+#include "../include/texture.h"
+#include "../include/transform.h"
+#include "../include/triangle.h"
 #include "../include/utils.h"
 #include "../include/vec3.h"
 #include "../include/vec4.h"
-#include "../include/mat4.h"
-#include "../include/quaternion.h"
-#include "../include/ray.h"
-#include "../include/color.h"
-#include "../include/texture.h"
-#include "../include/material.h"
-#include "../include/hittable.h"
-#include "../include/hittable_list.h"
-#include "../include/sphere.h"
-#include "../include/plane.h"
-#include "../include/cylinder.h"
-#include "../include/cone.h"
-#include "../include/triangle.h"
-#include "../include/mesh.h"
-#include "../include/transform.h"
-#include "../include/light.h"
-#include "../include/camera.h"
 
 #include <GL/freeglut.h>
 
 // ==================== CONFIGURAÇÕES GLOBAIS ====================
-const int IMAGE_WIDTH = 500;
-const int IMAGE_HEIGHT = 500;
-GLubyte* PixelBuffer = nullptr;
+const int IMAGE_WIDTH = 800;
+const int IMAGE_HEIGHT = 800;
+unsigned char *PixelBuffer = nullptr;
 
 // Cena
 hittable_list world;
@@ -56,556 +57,902 @@ ambient_light ambient;
 std::vector<std::shared_ptr<light>> lights;
 
 // Estado da interface
-int current_projection = 0;  // 0=perspectiva, 1=ortográfica, 2=oblíqua
-int vanishing_points = 3;    // 1, 2 ou 3 pontos de fuga
+int current_projection = 0; // 0=perspectiva, 1=ortográfica, 2=oblíqua
+int vanishing_points = 3;   // 1, 2 ou 3 pontos de fuga
 bool need_redraw = true;
 std::string picked_object = "";
 
+// Câmera interativa
+point3 cam_eye(400, 200, 100); // Posição inicial da câmera
+point3 cam_at(250, 100, 250);  // Olhando para o centro da cena
+double cam_speed = 30.0;       // Velocidade de movimento
+
 // ==================== MODELO DE ILUMINAÇÃO PHONG ====================
-color calculate_lighting(const hit_record& rec, const ray& r,
-                         const hittable_list& world) {
-    color result(0, 0, 0);
-    
-    // Componente ambiente
-    color diffuse_color = rec.mat->get_diffuse(rec.u, rec.v, rec.p);
-    result = result + rec.mat->ka * diffuse_color;
-    
-    // Para cada fonte de luz
-    for (const auto& light_ptr : lights) {
-        vec3 L = light_ptr->get_direction(rec.p);
-        double light_dist = light_ptr->get_distance(rec.p);
-        
-        // SOMBRAS (Requisito 4)
-        ray shadow_ray(rec.p + 0.001 * rec.normal, L);
-        hit_record shadow_rec;
-        if (world.hit(shadow_ray, 0.001, light_dist - 0.001, shadow_rec)) {
-            continue;  // Ponto está na sombra desta luz
-        }
-        
-        color light_intensity = light_ptr->get_intensity(rec.p);
-        
-        // Componente difusa
-        double diff = std::max(0.0, dot(rec.normal, L));
-        result = result + diffuse_color * light_intensity * diff;
-        
-        // Componente especular (Blinn-Phong)
-        vec3 V = unit_vector(-r.direction());
-        vec3 H = unit_vector(L + V);
-        double spec = std::pow(std::max(0.0, dot(rec.normal, H)), rec.mat->shininess);
-        result = result + rec.mat->ks * light_intensity * spec;
+color calculate_lighting(const hit_record &rec, const ray &r,
+                         const hittable_list &world) {
+  color result(0, 0, 0);
+
+  // Componente ambiente
+  color diffuse_color = rec.mat->get_diffuse(rec.u, rec.v, rec.p);
+  result = result + rec.mat->ka * diffuse_color;
+
+  // Para cada fonte de luz
+  for (const auto &light_ptr : lights) {
+    vec3 L = light_ptr->get_direction(rec.p);
+    double light_dist = light_ptr->get_distance(rec.p);
+
+    // SOMBRAS (Requisito 4)
+    ray shadow_ray(rec.p + 0.001 * rec.normal, L);
+    hit_record shadow_rec;
+    if (world.hit(shadow_ray, 0.001, light_dist - 0.001, shadow_rec)) {
+      continue; // Ponto está na sombra desta luz
     }
-    
-    return result.clamp();
+
+    color light_intensity = light_ptr->get_intensity(rec.p);
+
+    // Componente difusa
+    double diff = std::max(0.0, dot(rec.normal, L));
+    result = result + diffuse_color * light_intensity * diff;
+
+    // Componente especular (Blinn-Phong)
+    vec3 V = unit_vector(-r.direction());
+    vec3 H = unit_vector(L + V);
+    double spec =
+        std::pow(std::max(0.0, dot(rec.normal, H)), rec.mat->shininess);
+    result = result + rec.mat->ks * light_intensity * spec;
+  }
+
+  return result.clamp();
 }
 
 // ==================== RAY CASTING ====================
-color ray_color(const ray& r, const hittable_list& world) {
-    hit_record rec;
-    
-    if (world.hit(r, 0.001, infinity, rec)) {
-        return calculate_lighting(rec, r, world);
-    }
-    
-    // Cor de fundo (gradiente de céu)
-    vec3 unit_direction = unit_vector(r.direction());
-    double t = 0.5 * (unit_direction.y() + 1.0);
-    color sky_top(0.4, 0.5, 0.7);
-    color sky_bottom(0.7, 0.75, 0.8);
-    return sky_bottom * (1.0 - t) + sky_top * t;
+color ray_color(const ray &r, const hittable_list &world) {
+  hit_record rec;
+
+  if (world.hit(r, 0.001, infinity, rec)) {
+    return calculate_lighting(rec, r, world);
+  }
+
+  // Cor de fundo (gradiente de céu místico)
+  vec3 unit_direction = unit_vector(r.direction());
+  double t = 0.5 * (unit_direction.y() + 1.0);
+  color sky_top(0.15, 0.2, 0.4);   // Azul escuro
+  color sky_bottom(0.5, 0.4, 0.6); // Roxo suave
+  return sky_bottom * (1.0 - t) + sky_top * t;
 }
 
 // ==================== FUNÇÃO DE PICK (Requisito 5.1) ====================
 void perform_pick(int mouse_x, int mouse_y) {
-    // Converter coordenadas de tela para coordenadas normalizadas
-    double u = double(mouse_x) / IMAGE_WIDTH;
-    double v = double(IMAGE_HEIGHT - mouse_y) / IMAGE_HEIGHT;  // Inverter Y
-    
-    ray r = cam.get_ray(u, v);
-    hit_record rec;
-    
-    std::cout << "\n========== PICK ==========\n";
-    std::cout << "Mouse: (" << mouse_x << ", " << mouse_y << ")\n";
-    std::cout << "UV: (" << u << ", " << v << ")\n";
-    
-    if (world.hit(r, 0.001, infinity, rec)) {
-        picked_object = rec.object_name;
-        std::cout << "OBJETO: " << rec.object_name << "\n";
-        std::cout << "Material: " << rec.mat->name << "\n";
-        std::cout << "Posicao: (" << rec.p.x() << ", " << rec.p.y() << ", " << rec.p.z() << ")\n";
-        std::cout << "Normal: (" << rec.normal.x() << ", " << rec.normal.y() << ", " << rec.normal.z() << ")\n";
-        std::cout << "Distancia (t): " << rec.t << "\n";
-    } else {
-        picked_object = "Fundo (Ceu)";
-        std::cout << "OBJETO: Fundo (Ceu)\n";
-    }
-    std::cout << "==========================\n";
+  // Converter coordenadas de tela para coordenadas normalizadas
+  double u = double(mouse_x) / IMAGE_WIDTH;
+  double v = double(IMAGE_HEIGHT - mouse_y) / IMAGE_HEIGHT;
+
+  ray r = cam.get_ray(u, v);
+  hit_record rec;
+
+  std::cout << "\n========== PICK ==========\n";
+  std::cout << "Mouse: (" << mouse_x << ", " << mouse_y << ")\n";
+  std::cout << "UV: (" << u << ", " << v << ")\n";
+
+  if (world.hit(r, 0.001, infinity, rec)) {
+    picked_object = rec.object_name;
+    std::cout << "OBJETO: " << rec.object_name << "\n";
+    std::cout << "Material: " << rec.mat->name << "\n";
+    std::cout << "Posicao: (" << rec.p.x() << ", " << rec.p.y() << ", "
+              << rec.p.z() << ")\n";
+    std::cout << "Normal: (" << rec.normal.x() << ", " << rec.normal.y() << ", "
+              << rec.normal.z() << ")\n";
+    std::cout << "Distancia (t): " << rec.t << "\n";
+  } else {
+    picked_object = "Fundo (Ceu)";
+    std::cout << "OBJETO: Fundo (Ceu)\n";
+  }
+  std::cout << "==========================\n";
 }
+
+// Forward declaration
+void setup_camera();
 
 // ==================== CRIAÇÃO DA CENA ====================
 void create_scene() {
-    world.clear();
-    lights.clear();
+  world.clear();
+  lights.clear();
 
-    // ===== MATERIAIS =====
-    auto mat_metal = materials::sword_metal();
-    auto mat_stone = materials::stone();
-    auto mat_leather = materials::leather();
-    auto mat_ruby = materials::ruby_gem();
-    auto mat_gold = materials::gold();
-    auto mat_floor = materials::floor();
-    auto mat_wall = materials::wall();
+  // ===== MATERIAIS =====
+  auto mat_metal = materials::sword_metal();
+  auto mat_stone = materials::stone();
+  auto mat_leather = materials::leather();
+  auto mat_ruby = materials::ruby_gem();
+  auto mat_gold = materials::gold();
+  auto mat_wood = materials::wood();
+  auto mat_moss = materials::moss();
+  auto mat_dark = materials::dark_stone();
+  auto mat_water = materials::water();
+  auto mat_cap = materials::mushroom_cap();
+  auto mat_stem = materials::mushroom_stem();
+  auto mat_wall_stone = materials::wall_stone();
+  auto mat_leaves = materials::leaves();
+  auto mat_lake_rock = materials::lake_rock();
 
-    // ===== CONSTANTES DE POSIÇÃO (PRIMEIRO OCTANTE) =====
-    // Centro da cena em X=250, Z=250, Y começa em 0
-    const double CX = 250.0;
-    const double CZ = 250.0;
-    
-    // ===== PLANOS (CHÃO E PAREDES) =====
-    world.add(std::make_shared<plane>(
-        point3(0, 0, 0), vec3(0, 1, 0), mat_floor, "Chao"));
-    
-    world.add(std::make_shared<plane>(
-        point3(0, 0, 500), vec3(0, 0, -1), mat_wall, "Parede Fundo"));
-    
-    world.add(std::make_shared<plane>(
-        point3(0, 0, 0), vec3(0, 0, 1), mat_wall, "Parede Frente"));
-    
-    world.add(std::make_shared<plane>(
-        point3(500, 0, 0), vec3(-1, 0, 0), mat_wall, "Parede Direita"));
-    
-    world.add(std::make_shared<plane>(
-        point3(0, 0, 0), vec3(1, 0, 0), mat_wall, "Parede Esquerda"));
+  const double CX = 250.0;
+  const double CZ = 250.0;
 
-    // ===== PEDRA BASE (MALHA) =====
-    // Pedra grande onde a espada está cravada
-    auto stone_base = std::make_shared<box_mesh>(
-        point3(CX - 40, 0, CZ - 30),
-        point3(CX + 40, 50, CZ + 30),
-        mat_stone, "Pedra Base"
-    );
-    world.add(stone_base);
-    
-    // Pedra menor em cima (onde a espada entra)
-    auto stone_top = std::make_shared<box_mesh>(
-        point3(CX - 25, 50, CZ - 20),
-        point3(CX + 25, 70, CZ + 20),
-        mat_stone, "Pedra Topo"
-    );
-    world.add(stone_top);
+  // ===== AMBIENTE ÉPICO (GRUTA NATURAL) =====
 
-    // ===== ESPADA =====
-    // A espada está inclinada levemente (rotação em X)
-    const double sword_angle = degrees_to_radians(10);  // 10 graus de inclinação
-    
-    // 1. Lâmina (MALHA) - cravada na pedra, ponta para cima
-    auto blade_base = std::make_shared<blade_mesh>(
-        point3(0, 0, 0),           // Base da lâmina (centro)
-        point3(0, 120, 0),         // Ponta
-        10, 3,                      // Largura, espessura
-        mat_metal, "Lamina da Espada"
-    );
-    // Aplicar transformação: rotação + translação
-    mat4 blade_R = mat4::rotate_z(sword_angle);
-    mat4 blade_T = mat4::translate(CX, 30, CZ);
-    mat4 blade_M = blade_T * blade_R;
-    mat4 blade_Rinv = mat4::rotate_z_inverse(sword_angle);
-    mat4 blade_Tinv = mat4::translate_inverse(CX, 30, CZ);
-    mat4 blade_Minv = blade_Rinv * blade_Tinv;
-    world.add(std::make_shared<transform>(blade_base, blade_M, blade_Minv));
+  // Chão coberto de musgo/vegetação
+  world.add(std::make_shared<plane>(point3(0, 0, 0), vec3(0, 1, 0), mat_moss,
+                                    "Chao Musgo"));
 
-    // 2. Guarda (CILINDRO) - crossguard
-    auto guard = std::make_shared<cylinder>(
-        point3(0, 0, 0),           // Centro
-        vec3(1, 0, 0),             // Eixo horizontal
-        3, 50,                      // Raio, comprimento
-        mat_gold, "Guarda da Espada"
-    );
-    mat4 guard_T = mat4::translate(CX - 25, 145, CZ);
-    mat4 guard_Tinv = mat4::translate_inverse(CX - 25, 145, CZ);
-    world.add(std::make_shared<transform>(guard, guard_T, guard_Tinv));
+  // ===== STREAM MOAT (Riacho cercando a ilha central) =====
+  // Um único cilindro largo para água suave (sem ondinhas)
+  world.add(std::make_shared<cylinder>(point3(CX, 1.0, CZ), vec3(0, 1, 0), 180,
+                                       2, mat_water, "Stream Lake"));
 
-    // 3. Cabo (CILINDRO) - punho
-    auto handle = std::make_shared<cylinder>(
-        point3(0, 0, 0),
-        vec3(0, 1, 0),            // Eixo vertical
-        4, 35,                     // Raio, altura
-        mat_leather, "Cabo da Espada"
-    );
-    mat4 handle_R = mat4::rotate_z(sword_angle);
-    mat4 handle_T = mat4::translate(CX, 145, CZ);
-    mat4 handle_M = handle_T * handle_R;
-    mat4 handle_Rinv = mat4::rotate_z_inverse(sword_angle);
-    mat4 handle_Tinv = mat4::translate_inverse(CX, 145, CZ);
-    mat4 handle_Minv = handle_Rinv * handle_Tinv;
-    world.add(std::make_shared<transform>(handle, handle_M, handle_Minv));
+  // Rochas ao redor do lago (Textura: rochas_lago.jpg) - CONTORNO COMPLETO
+  double current_ang = 0;
+  while (current_ang < 2 * pi) {
+    double r = random_double(175, 185); // Bem na borda
+    double x = CX + r * cos(current_ang);
+    double z = CZ + r * sin(current_ang);
 
-    // 4. Pomo (ESFERA) - gema no topo
-    auto pommel = std::make_shared<sphere>(
-        point3(CX + 5, 185, CZ), 8, mat_ruby, "Gema do Pomo"
-    );
-    world.add(pommel);
+    double sz = random_double(12, 22); // Rochas robustas
+    world.add(std::make_shared<sphere>(point3(x, 0, z), sz, mat_lake_rock,
+                                       "Lake Rock"));
 
-    // ===== DECORAÇÕES =====
-    
-    // CONE decorativo (ponta do pomo)
-    auto pommel_tip = cone::from_base(
-        point3(0, 0, 0),
-        vec3(0, 1, 0),
-        4, 12,
-        mat_gold, "Ponta do Pomo"
-    );
-    mat4 tip_T = mat4::translate(CX + 5, 193, CZ);
-    mat4 tip_Tinv = mat4::translate_inverse(CX + 5, 193, CZ);
-    world.add(std::make_shared<transform>(
-        std::make_shared<cone>(pommel_tip), tip_T, tip_Tinv));
+    // Incremento baseado no tamanho para garantir overlap (sem buracos)
+    // Angulo = arco / raio
+    double ang_step = (sz * 0.7) / r; // 30% de overlap
+    current_ang += ang_step;
+  }
 
-    // Esferas decorativas ao redor da pedra
+  // ===== WATERFALL SYSTEM (Cachoeira Grande + Trilha + Lago) =====
+  // Posição: (60, Y, 480) -> Mais a frente para evitar colisão com paredes, e
+  // conectando ao lago
+  double WX = 60.0;
+  double WZ = 440.0; // Movido para frente (480 -> 440)
+
+  // 1. A Queda D'água (Muito maior)
+  auto wf_sheet = std::make_shared<box_mesh>(
+      point3(-100, 0, -8), point3(100, 500, 8), mat_water, "Waterfall Sheet");
+
+  // Transformação: Rotação 45 graus e Translação
+  double angle_deg = -45.0;
+  mat4 R = mat4::rotate_y(degrees_to_radians(angle_deg));
+  mat4 Rinv = mat4::rotate_y_inverse(degrees_to_radians(angle_deg));
+  mat4 T = mat4::translate(WX, 20, WZ);
+  mat4 Tinv = mat4::translate_inverse(WX, 20, WZ);
+  world.add(std::make_shared<transform>(wf_sheet, T * R, Rinv * Tinv));
+
+  // 2. Lago da Cachoeira (Maior)
+  world.add(std::make_shared<cylinder>(point3(WX, 2, WZ), vec3(0, 1, 0), 120, 5,
+                                       mat_water, "Waterfall Pool"));
+
+  // 3. Trilha de Conexão (Rio conectando Cachoeira -> Riacho Central)
+  // Um retângulo de água conectando os dois lagos
+  // Vetor do centro (CX,CZ) até Cachoeira (WX,WZ)
+  vec3 river_dir = unit_vector(point3(WX, 0, WZ) - point3(CX, 0, CZ));
+  point3 river_mid =
+      point3(CX, 2, CZ) + river_dir * 150.0; // Ponto médio aproximado
+  // Simplificação: Vários cilindros ou um box rotacionado. Usando cilindros
+  // para curva suave
+  for (int k = 0; k < 5; k++) {
+    double t = k / 4.0;
+    // Interpolacao linear manual para evitar erro de sintaxe
+    double start_x = CX + 130 * river_dir.x();
+    double start_z = CZ + 130 * river_dir.z();
+
+    point3 p1(start_x, 2, start_z);
+    point3 p2(WX, 2, WZ);
+
+    point3 pos = (1.0 - t) * p1 + t * p2;
+    world.add(std::make_shared<cylinder>(pos, vec3(0, 1, 0), 40, 4, mat_water,
+                                         "River Trail"));
+  }
+
+  // Espuma/Nevoa na base e no caminho
+  for (int i = 0; i < 30; i++) {
     world.add(std::make_shared<sphere>(
-        point3(CX - 60, 15, CZ - 40), 15, mat_stone, "Pedra Decorativa 1"));
-    world.add(std::make_shared<sphere>(
-        point3(CX + 65, 12, CZ + 35), 12, mat_stone, "Pedra Decorativa 2"));
-    world.add(std::make_shared<sphere>(
-        point3(CX + 50, 10, CZ - 50), 10, mat_stone, "Pedra Decorativa 3"));
+        point3(WX + random_double(-50, 50), 10, WZ + random_double(-50, 50)),
+        random_double(8, 20), mat_water, "Splash"));
+  }
 
-    // ===== DEMONSTRAÇÃO DE TRANSFORMAÇÕES =====
-    
-    // CISALHAMENTO (Requisito 1.4.4)
-    auto sheared_box = std::make_shared<box_mesh>(
-        point3(0, 0, 0), point3(30, 30, 30), mat_stone, "Caixa Cisalhada"
-    );
-    auto sheared = shear_object(sheared_box, 0.3, 0, 0, 0, 0, 0);
-    mat4 shear_T = mat4::translate(CX + 100, 0, CZ - 80);
-    mat4 shear_Tinv = mat4::translate_inverse(CX + 100, 0, CZ - 80);
-    world.add(std::make_shared<transform>(sheared, shear_T, shear_Tinv));
+  // ===== OPEN CLIFFS (Paredes Irregulares, Altas e Imponentes) =====
+  for (int i = 0; i < 65; i++) { // Aumentado para 65 (mais denso)
+    double angle = -pi / 2 + (pi * i) / 65.0 * 2.6; // Ajustado para 65
+    if (angle > pi * 1.3 || angle < -pi * 0.3)
+      continue;
 
-    // ROTAÇÃO EM EIXO ARBITRÁRIO (Requisito 1.4.2 - Quatérnios)
-    auto rotated_box = std::make_shared<box_mesh>(
-        point3(-15, -15, -15), point3(15, 15, 15), mat_gold, "Caixa Rotacionada"
-    );
-    vec3 arbitrary_axis(1, 1, 1);  // Eixo diagonal
-    auto rotated = rotate_axis_object(rotated_box, arbitrary_axis, degrees_to_radians(30));
-    mat4 rot_T = mat4::translate(CX - 100, 30, CZ + 80);
-    mat4 rot_Tinv = mat4::translate_inverse(CX - 100, 30, CZ + 80);
-    world.add(std::make_shared<transform>(rotated, rot_T, rot_Tinv));
+    double r = random_double(500, 750); // Mais distante para dar espaço
+    double x = CX + r * cos(angle);
+    double z = CZ + r * sin(angle);
 
-    // ESPELHO (Requisito 1.4.5)
-    auto original_sphere = std::make_shared<sphere>(
-        point3(CX - 80, 25, CZ), 20, mat_ruby, "Esfera Original"
-    );
-    world.add(original_sphere);
-    
-    // Esfera espelhada em relação ao plano YZ passando por CX
-    auto reflected = reflect_object(original_sphere, point3(CX, 0, CZ), vec3(1, 0, 0));
-    world.add(reflected);
+    // Paredes rochosas (Mistura de pedra, musgo e rocha especifica da parede)
+    // 60% Musgo (Cliff vegetation), 20% Rocha Escura, 20% Rocha Parede (Textura
+    // Nova)
+    std::shared_ptr<material> mat_wall;
+    double rnd = random_double(0, 1);
+    if (rnd > 0.4)
+      mat_wall = mat_moss;
+    else if (rnd > 0.2)
+      mat_wall = mat_dark;
+    else
+      mat_wall = mat_wall_stone;
 
-    // ===== ILUMINAÇÃO =====
-    
-    // Luz ambiente (Requisito 1.5.4)
-    ambient = ambient_light(0.2, 0.2, 0.25);
-    
-    // Luz pontual principal (Requisito 1.5.1)
-    lights.push_back(std::make_shared<point_light>(
-        point3(CX + 50, 300, CZ - 100),
-        color(1.0, 0.95, 0.9),
-        1.0, 0.0001, 0.00001
-    ));
-    
-    // Luz spot iluminando a espada (Requisito 1.5.2)
-    lights.push_back(std::make_shared<spot_light>(
-        point3(CX, 350, CZ),
-        vec3(0, -1, 0),
-        color(1.0, 0.9, 0.7),
-        degrees_to_radians(15),
-        degrees_to_radians(25),
-        1.0, 0.0001, 0.00001
-    ));
-    
-    // Luz direcional (sol) (Requisito 1.5.3)
-    lights.push_back(std::make_shared<directional_light>(
-        vec3(-0.3, -1.0, -0.5),
-        color(0.4, 0.4, 0.5)
-    ));
+    double h = random_double(300, 750);    // Mais altas (Aura aumentada)
+    double size = random_double(150, 300); // Rochas maiores
 
-    // ===== CÂMERA =====
-    setup_camera();
+    point3 rock_pos(x, h * 0.5, z);
+
+    // Check de Proximidade com a Cachoeira
+    // As paredes perto da cachoeira devem ter a textura "rocha das paredes"
+    // Cachoeira está em (WX, 0, WZ).
+    // Cliffs estão raio 500+. WZ=440.
+    // Usamos uma distancia de corte para selecionar o setor.
+    double dist_to_wf = vec3(x - WX, 0, z - WZ).length();
+    if (dist_to_wf <
+        500.0) { // Ajuste o raio conforme necessario para pegar a area desejada
+      mat_wall = mat_wall_stone;
+    }
+
+    world.add(std::make_shared<sphere>(rock_pos, size, mat_wall, "Cliff Rock"));
+
+    // Vegetação nas paredes
+    if (random_double(0, 1) > 0.4) {
+      world.add(std::make_shared<sphere>(point3(x, h * 0.9, z), size * 0.5,
+                                         mat_moss, "Cliff Vegetation"));
+    }
+  }
+
+  // ===== UPPER CLIFFS (Segundo nivel de altura - "Aura" ainda maior) =====
+  for (int i = 0; i < 50; i++) {
+    double angle = -pi / 2 + (pi * i) / 50.0 * 2.6;
+    if (angle > pi * 1.3 || angle < -pi * 0.3)
+      continue;
+
+    double r = random_double(500, 750);
+    double x = CX + r * cos(angle);
+    double z = CZ + r * sin(angle);
+
+    std::shared_ptr<material> mat_wall;
+    double rnd = random_double(0, 1);
+    if (rnd > 0.4)
+      mat_wall = mat_moss;
+    else if (rnd > 0.2)
+      mat_wall = mat_dark;
+    else
+      mat_wall = mat_wall_stone;
+
+    double h = random_double(700, 1100);   // NIVEL SUPERIOR (700 a 1100)
+    double size = random_double(180, 350); // Rochas enormes no topo
+
+    point3 rock_pos(x, h * 0.5, z);
+
+    // Mesma logica de textura da cachoeira
+    double dist_to_wf = vec3(x - WX, 0, z - WZ).length();
+    if (dist_to_wf < 550.0) {
+      mat_wall = mat_wall_stone;
+    }
+
+    world.add(
+        std::make_shared<sphere>(rock_pos, size, mat_wall, "Upper Cliff Rock"));
+
+    // Vegetação (menos densa no topo)
+    if (random_double(0, 1) > 0.6) {
+      world.add(std::make_shared<sphere>(point3(x, h * 0.9, z), size * 0.5,
+                                         mat_moss, "Upper Vegetation"));
+    }
+  }
+
+  // ===== VEGETATION (Chão e Árvores Detalhadas) =====
+  // 1. Plantas Pequenas e Médias no Chão
+  for (int i = 0; i < 80; i++) {
+    double r = random_double(200, 500);
+    double angle = random_double(0, 2 * pi);
+    double x = CX + r * cos(angle);
+    double z = CZ + r * sin(angle);
+
+    // Evitar area da cachoeira aprox
+    if (vec3(x - WX, 0, z - WZ).length() < 100)
+      continue;
+
+    double type = random_double(0, 1);
+    if (type < 0.3) {
+      // Cogumelo Grande Solitario
+      world.add(std::make_shared<cylinder>(
+          point3(x, 0, z), vec3(0, 1, 0), random_double(1, 3),
+          random_double(5, 15), mat_stem, "Mushroom"));
+      world.add(std::make_shared<sphere>(point3(x, random_double(5, 15), z),
+                                         random_double(4, 8), mat_cap,
+                                         "Mushroom"));
+    } else if (type < 0.7) {
+      // Planta Média (Arbusto)
+      world.add(std::make_shared<sphere>(point3(x, 0, z), random_double(10, 25),
+                                         mat_moss, "Bush"));
+    } else {
+      // Planta Pequena (Grama alta/Tufo)
+      world.add(std::make_shared<cylinder>(
+          point3(x, 0, z),
+          vec3(random_double(-0.2, 0.2), 1, random_double(-0.2, 0.2)),
+          random_double(2, 5), random_double(10, 20), mat_moss, "Grass Tufo"));
+    }
+  }
+
+  // 1.5 Colonias de Cogumelos (Novos Grupos Densos)
+  for (int i = 0; i < 15; i++) {
+    double r_colony = random_double(200, 480);
+    double ang_colony = random_double(0, 2 * pi);
+    double cx = CX + r_colony * cos(ang_colony);
+    double cz = CZ + r_colony * sin(ang_colony);
+
+    // Evitar riacho/cachoeira
+    if (vec3(cx - WX, 0, cz - WZ).length() < 80)
+      continue;
+
+    // Criar 3-7 cogumelos pequenos no grupo
+    int num_mush = (int)random_double(3, 8);
+    for (int k = 0; k < num_mush; k++) {
+      double mr = random_double(5, 15); // Raio do grupo
+      double mang = random_double(0, 2 * pi);
+      double mx = cx + mr * cos(mang);
+      double mz = cz + mr * sin(mang);
+
+      world.add(std::make_shared<cylinder>(
+          point3(mx, 0, mz), vec3(0, 1, 0), random_double(0.5, 1.5),
+          random_double(3, 8), mat_stem, "Colony Stem"));
+      world.add(std::make_shared<sphere>(point3(mx, random_double(3, 8), mz),
+                                         random_double(2, 5), mat_cap,
+                                         "Colony Cap"));
+    }
+  }
+
+  // 2. Arvores Frondosas (Tronco + Galhos + Folhas)
+  point3 tree_pos[] = {point3(CX - 280, 0, CZ - 120),
+                       point3(CX + 300, 0, CZ + 80)};
+  for (auto pos : tree_pos) {
+    // Tronco
+    world.add(std::make_shared<cylinder>(pos, vec3(0, 1, 0), 30, 400, mat_wood,
+                                         "Tree Trunk"));
+
+    // Galhos e Folhas
+    for (int k = 0; k < 8; k++) {
+      double h = random_double(150, 350);
+      double ang = random_double(0, 2 * pi);
+      vec3 branch_dir = vec3(cos(ang), 0.5, sin(ang));
+      point3 branch_start = pos + vec3(0, h, 0);
+
+      // Galho
+      world.add(std::make_shared<cylinder>(branch_start, branch_dir, 8, 100,
+                                           mat_wood, "Tree Branch"));
+
+      // Copa de Folhas (Agrupamento de esferas na ponta) (AGORA COM TEX FOLHAS)
+      point3 leaf_center = branch_start + branch_dir * 100.0;
+      world.add(std::make_shared<sphere>(leaf_center, random_double(40, 70),
+                                         mat_leaves, "Tree Leaves"));
+    }
+  }
+
+  // ===== BASE ROCHOSA / MONTANHOSA
+  // (REALISTA) =====
+  const double MOUNTAIN_HEIGHT = 45.0; // Reduzido (60 -> 45) para enterrar mais
+
+  // Núcleo da montanha (grande rocha
+  // achatada central)
+  auto mountain_core = std::make_shared<sphere>(point3(0, 0, 0), 60, mat_stone,
+                                                "Nucleo Montanha");
+  mat4 core_S = mat4::scale(2.2, 0.7, 2.2); // Um pouco mais alta
+                                            // (0.6 -> 0.7)
+  mat4 core_Sinv = mat4::scale_inverse(2.2, 0.7, 2.2);
+  mat4 core_T = mat4::translate(CX, 30, CZ); // Subiu de 20 para 30
+  mat4 core_Tinv = mat4::translate_inverse(CX, 30, CZ);
+  world.add(std::make_shared<transform>(mountain_core, core_T * core_S,
+                                        core_Sinv * core_Tinv));
+
+  // ===== PEDESTAL ELEVADO =====
+  // Pedra Base (agora em cima da montanha)
+  auto stone_base = std::make_shared<box_mesh>(
+      point3(CX - 50, MOUNTAIN_HEIGHT, CZ - 40),
+      point3(CX + 50, MOUNTAIN_HEIGHT + 60, CZ + 40), mat_stone, "Pedra Base");
+  world.add(stone_base);
+
+  // Pedra Topo
+  auto stone_top = std::make_shared<box_mesh>(
+      point3(CX - 35, MOUNTAIN_HEIGHT + 60, CZ - 25),
+      point3(CX + 35, MOUNTAIN_HEIGHT + 85, CZ + 25), mat_stone, "Pedra Topo");
+  world.add(stone_top);
+
+  // ===== ESPADA CRAVADA NA PEDRA =====
+  // A lâmina aponta para CIMA (Y+) na
+  // definição local Depois translada para
+  // que a PONTA fique dentro da pedra
+
+  const double BLADE_LENGTH = 130.0;
+  // A guarda deve ficar acima do topo da
+  // pedra. Topo da pedra = MOUNTAIN_HEIGHT + 85 = 130
+  // Nova altura = 195 (65 unidades acima do topo) (Subido MAIS AINDA x2
+  // conforme pedido)
+  const double GUARD_Y = 195.0;
+
+  // 1. Lâmina (MALHA) - definida apontando
+  // para cima
+  auto blade = std::make_shared<blade_mesh>(point3(0, 0, 0), // Base
+                                            point3(0, BLADE_LENGTH,
+                                                   0), // Ponta para CIMA
+                                            10, 3,     // Largura MENOR,
+                                                       // espessura FINA
+                                            mat_metal, "Lamina da Espada",
+                                            0.40); // Afina a partir de 40%
+                                                   // (bem evidente)
+
+  // Rotacionar: 180 graus em Z (inverte) +
+  // 90 graus em Y (gira)
+  mat4 blade_Rz = mat4::rotate_z(degrees_to_radians(180));
+  mat4 blade_Ry = mat4::rotate_y(degrees_to_radians(90));
+  mat4 blade_R = blade_Ry * blade_Rz; // Combina rotações
+  mat4 blade_T = mat4::translate(CX, GUARD_Y, CZ);
+  mat4 blade_M = blade_T * blade_R;
+
+  mat4 blade_Rzinv = mat4::rotate_z_inverse(degrees_to_radians(180));
+  mat4 blade_Ryinv = mat4::rotate_y_inverse(degrees_to_radians(90));
+  mat4 blade_Rinv = blade_Rzinv * blade_Ryinv;
+  mat4 blade_Tinv = mat4::translate_inverse(CX, GUARD_Y, CZ);
+  mat4 blade_Minv = blade_Rinv * blade_Tinv;
+
+  world.add(std::make_shared<transform>(blade, blade_M, blade_Minv));
+
+  // 2. Guarda elaborada (CILINDROS +
+  // ESFERAS) Cilindro principal horizontal
+  auto guard_main = std::make_shared<cylinder>(point3(0, 0, 0),
+                                               vec3(1, 0,
+                                                    0), // Eixo horizontal (X)
+                                               3.5,
+                                               55, // Raio menor, comprimento
+                                               mat_gold, "Guarda Principal");
+  mat4 guard_T = mat4::translate(CX - 27.5, GUARD_Y, CZ);
+  mat4 guard_Tinv = mat4::translate_inverse(CX - 27.5, GUARD_Y, CZ);
+  world.add(std::make_shared<transform>(guard_main, guard_T, guard_Tinv));
+
+  // Esferas decorativas nas pontas da
+  // guarda
+  world.add(std::make_shared<sphere>(point3(CX - 30, GUARD_Y, CZ), 5, mat_gold,
+                                     "Guarda Esq"));
+  world.add(std::make_shared<sphere>(point3(CX + 30, GUARD_Y, CZ), 5, mat_gold,
+                                     "Guarda Dir"));
+
+  // Cilindro central da guarda (mais
+  // grosso)
+  auto guard_center = std::make_shared<cylinder>(
+      point3(0, 0, 0), vec3(0, 1, 0), // Vertical curto
+      6, 8, mat_gold, "Guarda Centro");
+  mat4 gc_T = mat4::translate(CX, GUARD_Y - 4, CZ);
+  mat4 gc_Tinv = mat4::translate_inverse(CX, GUARD_Y - 4, CZ);
+  world.add(std::make_shared<transform>(guard_center, gc_T, gc_Tinv));
+
+  // 3. Cabo (CILINDRO) - mais curto
+  auto handle = std::make_shared<cylinder>(point3(0, 0, 0),
+                                           vec3(0, 1, 0), // Eixo vertical (Y)
+                                           3, 25, // Raio 3, altura REDUZIDA
+                                           mat_leather, "Cabo da Espada");
+  mat4 handle_T = mat4::translate(CX, GUARD_Y + 4, CZ);
+  mat4 handle_Tinv = mat4::translate_inverse(CX, GUARD_Y + 4, CZ);
+  world.add(std::make_shared<transform>(handle, handle_T, handle_Tinv));
+
+  // 4. Pomo (ESFERA) - conectado ao cabo
+  // Cabo termina em GUARD_Y + 4 + 25 =
+  // GUARD_Y + 29
+  world.add(std::make_shared<sphere>(point3(CX, GUARD_Y + 31, CZ), 4.5,
+                                     mat_ruby, "Gema do Pomo"));
+
+  // 5. CONE decorativo no topo do pomo
+  auto tip_cone = cone::from_base(point3(0, 0, 0), vec3(0, 1, 0), 2.5, 8,
+                                  mat_gold, "Ponta Decorativa");
+  mat4 tip_T = mat4::translate(CX, GUARD_Y + 35,
+                               CZ); // Ajustado para conectar no
+                                    // pomo
+  mat4 tip_Tinv = mat4::translate_inverse(CX, GUARD_Y + 35, CZ);
+  world.add(std::make_shared<transform>(std::make_shared<cone>(tip_cone), tip_T,
+                                        tip_Tinv));
+
+  // ===== DEMONSTRAÇÃO DE TRANSFORMAÇÕES
+  // =====
+
+  // ===== DEMONSTRAÇÃO DE TRANSFORMAÇÕES
+  // (Removidos a pedido) ===== (Objetos de
+  // demonstração removidos: Caixa
+  // Cisalhada, Caixa Rotacionada, Gemas
+  // Espelhadas)
+
+  // ===== ILUMINAÇÃO DRAMÁTICA (GOD RAYS)
+  // =====
+
+  // Luz ambiente fraca e azulada (Caverna)
+  ambient = ambient_light(0.1, 0.12, 0.20);
+
+  // GOD RAY PRINCIPAL: Luz Spot intensa
+  // vindo de cima, iluminando a espada
+  // Foco bem fechado e intenso
+  // Luz 3 (Spot Light - God Ray) - Focada
+  // na Espada, menos intensa que antes
+  // para naturalidade
+  auto spot_dir = unit_vector(vec3(0, -1, 0.15));
+  lights.push_back(std::make_shared<spot_light>(
+      point3(CX, 600, CZ - 80), spot_dir,
+      color(1.2, 1.1,
+            1.0),             // Luz solar um pouco
+                              // mais suave
+      degrees_to_radians(12), // Cone interno
+      degrees_to_radians(35), // Cone externo mais suave
+      1.0, 0.000002, 0.0000001));
+
+  // Luz 4 (Point Light - Cachoeira Glow)
+  lights.push_back(
+      std::make_shared<point_light>(point3(60, 50,
+                                           480), // Base da cachoeira
+                                                 // (Nova posição)
+                                    color(0.4, 0.7,
+                                          1.0), // Azul claro
+                                    0.6, 0.003, 0.00005));
+
+  // Luz de preenchimento
+  // (Tocha/Vagalumes?) Luz pontual laranja
+  // fraca na base para iluminar as pedras
+  lights.push_back(std::make_shared<point_light>(
+      point3(CX - 80, 100, CZ + 80), color(0.8, 0.5, 0.2), 0.5, 0.001, 0.0001));
+
+  // Luz de preenchimento azulada (mágica)
+  // do outro lado
+  lights.push_back(std::make_shared<point_light>(
+      point3(CX + 80, 120, CZ - 80), color(0.2, 0.4, 0.8), 0.4, 0.001, 0.0001));
+
+  // ===== CÂMERA =====
+  setup_camera();
 }
 
 void setup_camera() {
-    const double CX = 250.0;
-    const double CZ = 250.0;
-    
-    double window_size = 150.0;
+  double window_size = 200.0;
 
-    switch (current_projection) {
-        case 0:  // Perspectiva
-            cam.projection = ProjectionType::PERSPECTIVE;
-            switch (vanishing_points) {
-                case 1:  // 1 ponto de fuga - olhando de frente
-                    cam.setup(
-                        point3(CX, 100, CZ - 300),  // Eye - de frente
-                        point3(CX, 80, CZ),          // At
-                        vec3(0, 1, 0),               // Up
-                        100.0,
-                        -window_size, window_size, -window_size, window_size,
-                        ProjectionType::PERSPECTIVE
-                    );
-                    break;
-                case 2:  // 2 pontos de fuga - rotacionado em Y
-                    cam.setup(
-                        point3(CX + 200, 100, CZ - 200),
-                        point3(CX, 80, CZ),
-                        vec3(0, 1, 0),
-                        100.0,
-                        -window_size, window_size, -window_size, window_size,
-                        ProjectionType::PERSPECTIVE
-                    );
-                    break;
-                case 3:  // 3 pontos de fuga - rotacionado em Y e elevado
-                default:
-                    cam.setup(
-                        point3(CX + 180, 200, CZ - 180),
-                        point3(CX, 60, CZ),
-                        vec3(0, 1, 0),
-                        100.0,
-                        -window_size, window_size, -window_size, window_size,
-                        ProjectionType::PERSPECTIVE
-                    );
-                    break;
-            }
-            break;
-            
-        case 1:  // Ortográfica
-            cam.setup(
-                point3(CX + 200, 150, CZ - 200),
-                point3(CX, 80, CZ),
-                vec3(0, 1, 0),
-                100.0,
-                -window_size, window_size, -window_size, window_size,
-                ProjectionType::ORTHOGRAPHIC
-            );
-            break;
-            
-        case 2:  // Oblíqua
-            cam.setup(
-                point3(CX, 150, CZ - 300),
-                point3(CX, 80, CZ),
-                vec3(0, 1, 0),
-                100.0,
-                -window_size, window_size, -window_size, window_size,
-                ProjectionType::OBLIQUE
-            );
-            cam.oblique_angle = 0.5;
-            cam.oblique_strength = 0.3;
-            break;
-    }
+  switch (current_projection) {
+  case 0: // Perspectiva
+    cam.setup(cam_eye, cam_at, vec3(0, 1, 0), 100.0, -window_size, window_size,
+              -window_size, window_size, ProjectionType::PERSPECTIVE);
+    break;
+
+  case 1: // Ortográfica
+    cam.setup(cam_eye, cam_at, vec3(0, 1, 0), 100.0, -window_size, window_size,
+              -window_size, window_size, ProjectionType::ORTHOGRAPHIC);
+    break;
+
+  case 2: // Oblíqua
+    cam.setup(cam_eye, cam_at, vec3(0, 1, 0), 100.0, -window_size, window_size,
+              -window_size, window_size, ProjectionType::OBLIQUE);
+    cam.oblique_angle = 0.5;
+    cam.oblique_strength = 0.35;
+    break;
+  }
+
+  std::cout << "Camera: Eye(" << cam_eye.x() << ", " << cam_eye.y() << ", "
+            << cam_eye.z() << ")\n";
 }
 
 // ==================== RENDERIZAÇÃO ====================
 void render() {
-    std::cout << "Renderizando " << IMAGE_WIDTH << "x" << IMAGE_HEIGHT << " pixels...\n";
-    
-    for (int j = 0; j < IMAGE_HEIGHT; j++) {
-        if (j % 50 == 0) {
-            std::cout << "Linha " << j << "/" << IMAGE_HEIGHT << "\r" << std::flush;
-        }
-        
-        for (int i = 0; i < IMAGE_WIDTH; i++) {
-            double u = double(i) / (IMAGE_WIDTH - 1);
-            double v = double(j) / (IMAGE_HEIGHT - 1);
-            
-            ray r = cam.get_ray(u, v);
-            color pixel_color = ray_color(r, world);
-            
-            // Converter para buffer (Y invertido para OpenGL)
-            int flipped_j = IMAGE_HEIGHT - 1 - j;
-            int idx = (flipped_j * IMAGE_WIDTH + i) * 3;
-            
-            PixelBuffer[idx] = pixel_color.r_byte();
-            PixelBuffer[idx + 1] = pixel_color.g_byte();
-            PixelBuffer[idx + 2] = pixel_color.b_byte();
-        }
+  std::cout << "Renderizando " << IMAGE_WIDTH << "x" << IMAGE_HEIGHT
+            << " pixels...\n";
+
+  for (int j = 0; j < IMAGE_HEIGHT; j++) {
+    if (j % 100 == 0) {
+      std::cout << "Linha " << j << "/" << IMAGE_HEIGHT << "\r" << std::flush;
     }
-    
-    std::cout << "Renderizacao concluida!               \n";
-    need_redraw = false;
+
+    for (int i = 0; i < IMAGE_WIDTH; i++) {
+      double u = double(i) / (IMAGE_WIDTH - 1);
+      double v = double(j) / (IMAGE_HEIGHT - 1);
+
+      ray r = cam.get_ray(u, v);
+      color pixel_color = ray_color(r, world);
+
+      // Armazenar no buffer (sem inversão - OpenGL faz isso)
+      int idx = (j * IMAGE_WIDTH + i) * 3;
+
+      PixelBuffer[idx] = pixel_color.r_byte();
+      PixelBuffer[idx + 1] = pixel_color.g_byte();
+      PixelBuffer[idx + 2] = pixel_color.b_byte();
+    }
+  }
+
+  std::cout << "Renderizacao concluida!                    \n";
+  need_redraw = false;
 }
 
 // ==================== CALLBACKS GLUT ====================
 void display() {
-    if (need_redraw) {
-        render();
+  if (need_redraw) {
+    render();
+  }
+
+  glClear(GL_COLOR_BUFFER_BIT);
+  glRasterPos2i(-1, -1);
+  glDrawPixels(IMAGE_WIDTH, IMAGE_HEIGHT, GL_RGB, GL_UNSIGNED_BYTE,
+               PixelBuffer);
+
+  // Mostrar informações na tela
+  glColor3f(1.0f, 1.0f, 0.0f);
+  glRasterPos2f(-0.98f, 0.92f);
+
+  std::string info = "Projecao: ";
+  switch (current_projection) {
+  case 0:
+    info += "Perspectiva (" + std::to_string(vanishing_points) + " PF)";
+    break;
+  case 1:
+    info += "Ortografica";
+    break;
+  case 2:
+    info += "Obliqua";
+    break;
+  }
+  for (char c : info) {
+    glutBitmapCharacter(GLUT_BITMAP_HELVETICA_18, c);
+  }
+
+  if (!picked_object.empty()) {
+    glRasterPos2f(-0.98f, 0.85f);
+    std::string pick_info = "Pick: " + picked_object;
+    for (char c : pick_info) {
+      glutBitmapCharacter(GLUT_BITMAP_HELVETICA_18, c);
     }
-    
-    glClear(GL_COLOR_BUFFER_BIT);
-    glDrawPixels(IMAGE_WIDTH, IMAGE_HEIGHT, GL_RGB, GL_UNSIGNED_BYTE, PixelBuffer);
-    
-    // Mostrar informações na tela
-    glColor3f(1.0f, 1.0f, 1.0f);
-    glRasterPos2f(-0.95f, 0.9f);
-    
-    std::string info = "Projecao: ";
-    switch (current_projection) {
-        case 0: info += "Perspectiva (" + std::to_string(vanishing_points) + " PF)"; break;
-        case 1: info += "Ortografica"; break;
-        case 2: info += "Obliqua"; break;
-    }
-    for (char c : info) {
-        glutBitmapCharacter(GLUT_BITMAP_HELVETICA_12, c);
-    }
-    
-    if (!picked_object.empty()) {
-        glRasterPos2f(-0.95f, 0.8f);
-        std::string pick_info = "Ultimo Pick: " + picked_object;
-        for (char c : pick_info) {
-            glutBitmapCharacter(GLUT_BITMAP_HELVETICA_12, c);
-        }
-    }
-    
-    glFlush();
-    glutSwapBuffers();
+  }
+
+  glutSwapBuffers();
 }
 
 void keyboard(unsigned char key, int x, int y) {
-    switch (key) {
-        case 27:  // ESC
-        case 'q':
-        case 'Q':
-            std::cout << "Encerrando...\n";
-            exit(0);
-            break;
-            
-        case '1':  // 1 ponto de fuga
-            current_projection = 0;
-            vanishing_points = 1;
-            setup_camera();
-            need_redraw = true;
-            std::cout << "Perspectiva com 1 ponto de fuga\n";
-            break;
-            
-        case '2':  // 2 pontos de fuga
-            current_projection = 0;
-            vanishing_points = 2;
-            setup_camera();
-            need_redraw = true;
-            std::cout << "Perspectiva com 2 pontos de fuga\n";
-            break;
-            
-        case '3':  // 3 pontos de fuga
-            current_projection = 0;
-            vanishing_points = 3;
-            setup_camera();
-            need_redraw = true;
-            std::cout << "Perspectiva com 3 pontos de fuga\n";
-            break;
-            
-        case 'o':
-        case 'O':  // Projeção ortográfica
-            current_projection = 1;
-            setup_camera();
-            need_redraw = true;
-            std::cout << "Projecao Ortografica\n";
-            break;
-            
-        case 'b':
-        case 'B':  // Projeção oblíqua
-            current_projection = 2;
-            setup_camera();
-            need_redraw = true;
-            std::cout << "Projecao Obliqua\n";
-            break;
-            
-        case '+':
-        case '=':  // Zoom in
-            cam.zoom_in(0.8);
-            need_redraw = true;
-            std::cout << "Zoom In\n";
-            break;
-            
-        case '-':
-        case '_':  // Zoom out
-            cam.zoom_out(1.25);
-            need_redraw = true;
-            std::cout << "Zoom Out\n";
-            break;
-            
-        case 'h':
-        case 'H':  // Help
-            std::cout << "\n=== CONTROLES ===\n";
-            std::cout << "1, 2, 3 - Perspectiva com 1/2/3 pontos de fuga\n";
-            std::cout << "O - Projecao Ortografica\n";
-            std::cout << "B - Projecao Obliqua\n";
-            std::cout << "+/- - Zoom In/Out\n";
-            std::cout << "Click - Pick de objeto\n";
-            std::cout << "Q/ESC - Sair\n";
-            std::cout << "=================\n\n";
-            break;
-    }
-    
-    glutPostRedisplay();
-}
+  bool changed = false;
+  vec3 forward = unit_vector(cam_at - cam_eye);
+  vec3 right = unit_vector(cross(forward, vec3(0, 1, 0)));
 
-void mouse(int button, int state, int x, int y) {
-    if (button == GLUT_LEFT_BUTTON && state == GLUT_DOWN) {
-        perform_pick(x, y);
-        glutPostRedisplay();
-    }
-}
+  switch (key) {
+  case 27: // ESC
+  case 'q':
+  case 'Q':
+    std::cout << "Encerrando...\n";
+    if (PixelBuffer)
+      delete[] PixelBuffer;
+    exit(0);
+    break;
 
-void reshape(int w, int h) {
-    glViewport(0, 0, w, h);
-    glMatrixMode(GL_PROJECTION);
-    glLoadIdentity();
-    gluOrtho2D(-1, 1, -1, 1);
-    glMatrixMode(GL_MODELVIEW);
-    glLoadIdentity();
-}
+  // === MOVIMENTO DA CÂMERA ===
+  case 'w':
+  case 'W':
+    cam_eye = cam_eye + forward * cam_speed;
+    cam_at = cam_at + forward * cam_speed;
+    setup_camera();
+    need_redraw = true;
+    changed = true;
+    break;
 
-// ==================== MAIN ====================
-int main(int argc, char** argv) {
-    std::cout << "============================================\n";
-    std::cout << "  COMPUTACAO GRAFICA - ESPADA NA PEDRA\n";
-    std::cout << "============================================\n\n";
-    
-    // Inicializar buffer
-    PixelBuffer = new GLubyte[IMAGE_WIDTH * IMAGE_HEIGHT * 3];
-    
-    // Criar cena
-    std::cout << "Criando cena...\n";
-    create_scene();
-    
-    // Inicializar GLUT
-    glutInit(&argc, argv);
-    glutInitDisplayMode(GLUT_DOUBLE | GLUT_RGB);
-    glutInitWindowSize(IMAGE_WIDTH, IMAGE_HEIGHT);
-    glutInitWindowPosition(100, 100);
-    glutCreateWindow("Computacao Grafica - Espada na Pedra");
-    
-    // Configurar OpenGL
-    glClearColor(0.0f, 0.0f, 0.0f, 1.0f);
-    
-    // Registrar callbacks
-    glutDisplayFunc(display);
-    glutKeyboardFunc(keyboard);
-    glutMouseFunc(mouse);
-    glutReshapeFunc(reshape);
-    
+  case 's':
+  case 'S':
+    cam_eye = cam_eye - forward * cam_speed;
+    cam_at = cam_at - forward * cam_speed;
+    setup_camera();
+    need_redraw = true;
+    changed = true;
+    break;
+
+  case 'a':
+  case 'A':
+    cam_eye = cam_eye - right * cam_speed;
+    cam_at = cam_at - right * cam_speed;
+    setup_camera();
+    need_redraw = true;
+    changed = true;
+    break;
+
+  case 'd':
+  case 'D':
+    cam_eye = cam_eye + right * cam_speed;
+    cam_at = cam_at + right * cam_speed;
+    setup_camera();
+    need_redraw = true;
+    changed = true;
+    break;
+
+  case 'r':
+  case 'R':
+    cam_eye[1] += cam_speed;
+    cam_at[1] += cam_speed;
+    setup_camera();
+    need_redraw = true;
+    changed = true;
+    break;
+
+  case 'f':
+  case 'F':
+    cam_eye[1] -= cam_speed;
+    cam_at[1] -= cam_speed;
+    setup_camera();
+    need_redraw = true;
+    changed = true;
+    break;
+
+  // === PROJEÇÕES ===
+  case '1':
+    current_projection = 0;
+    vanishing_points = 1;
+    setup_camera();
+    need_redraw = true;
+    changed = true;
+    std::cout << "Perspectiva\n";
+    break;
+
+  case 'o':
+  case 'O':
+    current_projection = 1;
+    setup_camera();
+    need_redraw = true;
+    changed = true;
+    std::cout << "Projecao Ortografica\n";
+    break;
+
+  case 'p':
+  case 'P':
+    current_projection = 2;
+    setup_camera();
+    need_redraw = true;
+    changed = true;
+    std::cout << "Projecao Obliqua\n";
+    break;
+
+  case '+':
+  case '=':
+    cam.zoom_in(0.8);
+    need_redraw = true;
+    changed = true;
+    std::cout << "Zoom In\n";
+    break;
+
+  case '-':
+  case '_':
+    cam.zoom_out(1.25);
+    need_redraw = true;
+    changed = true;
+    std::cout << "Zoom Out\n";
+    break;
+
+  case 'h':
+  case 'H':
     std::cout << "\n=== CONTROLES ===\n";
-    std::cout << "1, 2, 3 - Perspectiva com 1/2/3 pontos de fuga\n";
-    std::cout << "O - Projecao Ortografica\n";
-    std::cout << "B - Projecao Obliqua\n";
+    std::cout << "WASD - Mover camera (frente/tras/esq/dir)\n";
+    std::cout << "R/F - Subir/Descer camera\n";
+    std::cout << "Setas - Rotacionar camera\n";
+    std::cout << "1 - Perspectiva | O - Ortografica | P - Obliqua\n";
     std::cout << "+/- - Zoom In/Out\n";
     std::cout << "Click - Pick de objeto\n";
     std::cout << "Q/ESC - Sair\n";
     std::cout << "=================\n\n";
-    
-    // Render inicial
-    render();
-    
-    // Loop principal
-    glutMainLoop();
-    
-    // Cleanup
-    delete[] PixelBuffer;
-    
-    return 0;
+    break;
+
+  case 'c':
+  case 'C':
+    // Reset câmera para posição padrão
+    cam_eye = point3(400, 200, 100);
+    cam_at = point3(250, 100, 250);
+    setup_camera();
+    need_redraw = true;
+    changed = true;
+    std::cout << "Camera resetada\n";
+    break;
+  }
+
+  if (changed) {
+    glutPostRedisplay();
+  }
+}
+
+// Função para teclas especiais (setas)
+void special_keys(int key, int x, int y) {
+  bool changed = false;
+
+  vec3 forward = unit_vector(cam_at - cam_eye);
+  vec3 right = unit_vector(cross(forward, vec3(0, 1, 0)));
+  vec3 up(0, 1, 0);
+
+  switch (key) {
+  case GLUT_KEY_UP:
+    cam_at = cam_at + up * cam_speed;
+    setup_camera();
+    need_redraw = true;
+    changed = true;
+    break;
+
+  case GLUT_KEY_DOWN:
+    cam_at = cam_at - up * cam_speed;
+    setup_camera();
+    need_redraw = true;
+    changed = true;
+    break;
+
+  case GLUT_KEY_LEFT:
+    cam_at = cam_at - right * cam_speed;
+    setup_camera();
+    need_redraw = true;
+    changed = true;
+    break;
+
+  case GLUT_KEY_RIGHT:
+    cam_at = cam_at + right * cam_speed;
+    setup_camera();
+    need_redraw = true;
+    changed = true;
+    break;
+  }
+
+  if (changed) {
+    glutPostRedisplay();
+  }
+}
+
+void mouse(int button, int state, int x, int y) {
+  if (button == GLUT_LEFT_BUTTON && state == GLUT_DOWN) {
+    perform_pick(x, y);
+    glutPostRedisplay();
+  }
+}
+
+void reshape(int w, int h) {
+  glViewport(0, 0, w, h);
+  glMatrixMode(GL_PROJECTION);
+  glLoadIdentity();
+  gluOrtho2D(-1, 1, -1, 1);
+  glMatrixMode(GL_MODELVIEW);
+  glLoadIdentity();
+}
+
+// ==================== MAIN ====================
+int main(int argc, char **argv) {
+  std::cout << "============================================\n";
+  std::cout << "  COMPUTACAO GRAFICA - ESPADA NA PEDRA\n";
+  std::cout << "  Resolucao: " << IMAGE_WIDTH << "x" << IMAGE_HEIGHT << "\n";
+  std::cout << "============================================\n\n";
+
+  // Inicializar buffer
+  PixelBuffer = new unsigned char[IMAGE_WIDTH * IMAGE_HEIGHT * 3];
+  memset(PixelBuffer, 0, IMAGE_WIDTH * IMAGE_HEIGHT * 3);
+
+  // Criar cena
+  std::cout << "Criando cena...\n";
+  create_scene();
+
+  // Inicializar GLUT
+  glutInit(&argc, argv);
+  glutInitDisplayMode(GLUT_DOUBLE | GLUT_RGB);
+  glutInitWindowSize(IMAGE_WIDTH, IMAGE_HEIGHT);
+  glutInitWindowPosition(100, 100);
+  glutCreateWindow("CG - Espada na Pedra (Ray Caster)");
+
+  // Configurar OpenGL
+  glClearColor(0.0f, 0.0f, 0.0f, 1.0f);
+  glPixelStorei(GL_UNPACK_ALIGNMENT, 1);
+
+  // Registrar callbacks
+  glutDisplayFunc(display);
+  glutKeyboardFunc(keyboard);
+  glutSpecialFunc(special_keys);
+  glutMouseFunc(mouse);
+  glutReshapeFunc(reshape);
+
+  std::cout << "\n=== CONTROLES ===\n";
+  std::cout << "WASD - Mover camera\n";
+  std::cout << "R/F - Subir/Descer\n";
+  std::cout << "Setas - Rotacionar visao\n";
+  std::cout << "C - Reset camera\n";
+  std::cout << "1/O/P - Perspectiva/Ortografica/Obliqua\n";
+  std::cout << "+/- - Zoom\n";
+  std::cout << "Click - Pick | H - Help\n";
+  std::cout << "=================\n\n";
+
+  // Loop principal
+  glutMainLoop();
+
+  return 0;
 }
