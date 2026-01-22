@@ -456,11 +456,18 @@ void create_scene() {
                                         core_Sinv * core_Tinv));
 
   // ===== PEDESTAL ELEVADO =====
-  // Pedra Base (agora em cima da montanha)
-  auto stone_base = std::make_shared<box_mesh>(
-      point3(CX - 50, MOUNTAIN_HEIGHT, CZ - 40),
-      point3(CX + 50, MOUNTAIN_HEIGHT + 60, CZ + 40), mat_stone, "Pedra Base");
-  world.add(stone_base);
+  // Pedra Base COM CISALHAMENTO (Requisito 1.4.4 - Bônus +0.5)
+  // O cisalhamento faz a pedra parecer naturalmente inclinada/irregular
+  auto stone_base_mesh = std::make_shared<box_mesh>(
+      point3(-50, 0, -40), point3(50, 60, 40), mat_stone, "Pedra Base");
+  // Aplicar CISALHAMENTO: ligeira inclinação da pedra
+  mat4 pedra_shear =
+      mat4::shear(0.08, 0, 0, 0, 0.05, 0); // Cisalhamento sutil XY e ZY
+  mat4 pedra_shear_inv = mat4::shear_inverse(0.08, 0, 0, 0, 0.05, 0);
+  mat4 pedra_T = mat4::translate(CX, MOUNTAIN_HEIGHT, CZ);
+  mat4 pedra_Tinv = mat4::translate_inverse(CX, MOUNTAIN_HEIGHT, CZ);
+  world.add(std::make_shared<transform>(stone_base_mesh, pedra_T * pedra_shear,
+                                        pedra_shear_inv * pedra_Tinv));
 
   // Pedra Topo
   auto stone_top = std::make_shared<box_mesh>(
@@ -560,36 +567,178 @@ void create_scene() {
   world.add(std::make_shared<transform>(std::make_shared<cone>(tip_cone), tip_T,
                                         tip_Tinv));
 
-  // ===== DEMONSTRAÇÃO DE TRANSFORMAÇÕES
-  // =====
+  // ===== DEMONSTRAÇÃO DE TRANSFORMAÇÕES (Requisitos 1.4.4 e 1.4.5) =====
 
-  // ===== DEMONSTRAÇÃO DE TRANSFORMAÇÕES
-  // (Removidos a pedido) ===== (Objetos de
-  // demonstração removidos: Caixa
-  // Cisalhada, Caixa Rotacionada, Gemas
-  // Espelhadas)
+  // ===== 1. PILARES DE RUÍNAS ANTIGAS COM CISALHAMENTO (Requisito 1.4.4 -
+  // Bônus +0.5) ===== Pilares de pedra antigos ao redor do lago, inclinados
+  // devido à erosão/tempo O cisalhamento simula o "assentamento" natural de
+  // estruturas antigas
 
-  // ===== ILUMINAÇÃO DRAMÁTICA (GOD RAYS)
-  // =====
+  // Material pedra antiga (mais escuro e desgastado)
+  auto mat_ancient_stone = std::make_shared<material>(
+      color(0.35, 0.32, 0.28), // Pedra cinza-amarronzada
+      0.2,                     // ka
+      0.08,                    // ks - pouco brilho (desgaste)
+      4.0,                     // shininess baixo
+      "Ancient Stone");
 
-  // Luz ambiente fraca e azulada (Caverna)
-  ambient = ambient_light(0.1, 0.12, 0.20);
+  // Posições dos pilares ao redor do lago (formando uma entrada em ruínas)
+  // Pilar 1 - Entrada esquerda (inclinado para a direita)
+  auto pillar1 =
+      std::make_shared<cylinder>(point3(0, 0, 0), vec3(0, 1, 0), 15, 120,
+                                 mat_ancient_stone, "Ruined Pillar 1");
+  mat4 pillar1_shear = mat4::shear(0.35, 0, 0, 0, 0,
+                                   0); // Cisalhamento XY - MUITO EVIDENTE
+  mat4 pillar1_shear_inv = mat4::shear_inverse(0.35, 0, 0, 0, 0, 0);
+  mat4 pillar1_T = mat4::translate(CX - 220, 0, CZ + 150);
+  mat4 pillar1_Tinv = mat4::translate_inverse(CX - 220, 0, CZ + 150);
+  world.add(std::make_shared<transform>(pillar1, pillar1_T * pillar1_shear,
+                                        pillar1_shear_inv * pillar1_Tinv));
 
-  // GOD RAY PRINCIPAL: Luz Spot intensa
-  // vindo de cima, iluminando a espada
-  // Foco bem fechado e intenso
-  // Luz 3 (Spot Light - God Ray) - Focada
-  // na Espada, menos intensa que antes
-  // para naturalidade
-  auto spot_dir = unit_vector(vec3(0, -1, 0.15));
+  // Pilar 2 - Entrada direita (inclinado para a esquerda)
+  auto pillar2 =
+      std::make_shared<cylinder>(point3(0, 0, 0), vec3(0, 1, 0), 15, 130,
+                                 mat_ancient_stone, "Ruined Pillar 2");
+  mat4 pillar2_shear = mat4::shear(-0.30, 0.10, 0, 0, 0,
+                                   0); // Cisalhamento oposto - MUITO EVIDENTE
+  mat4 pillar2_shear_inv = mat4::shear_inverse(-0.30, 0.10, 0, 0, 0, 0);
+  mat4 pillar2_T = mat4::translate(CX + 220, 0, CZ + 150);
+  mat4 pillar2_Tinv = mat4::translate_inverse(CX + 220, 0, CZ + 150);
+  world.add(std::make_shared<transform>(pillar2, pillar2_T * pillar2_shear,
+                                        pillar2_shear_inv * pillar2_Tinv));
+
+  // Pilar 3 - Mais ao fundo, parcialmente destruído (menor e mais inclinado)
+  auto pillar3 =
+      std::make_shared<cylinder>(point3(0, 0, 0), vec3(0, 1, 0), 12, 80,
+                                 mat_ancient_stone, "Ruined Pillar 3");
+  mat4 pillar3_shear = mat4::shear(0.25, 0.30, 0, 0, 0,
+                                   0); // Cisalhamento diagonal - MUITO EVIDENTE
+  mat4 pillar3_shear_inv = mat4::shear_inverse(0.25, 0.30, 0, 0, 0, 0);
+  mat4 pillar3_T = mat4::translate(CX - 180, 0, CZ + 280);
+  mat4 pillar3_Tinv = mat4::translate_inverse(CX - 180, 0, CZ + 280);
+  world.add(std::make_shared<transform>(pillar3, pillar3_T * pillar3_shear,
+                                        pillar3_shear_inv * pillar3_Tinv));
+
+  // Pilar 4 - Quase caído (muito inclinado)
+  auto pillar4 =
+      std::make_shared<cylinder>(point3(0, 0, 0), vec3(0, 1, 0), 14, 100,
+                                 mat_ancient_stone, "Ruined Pillar 4");
+  mat4 pillar4_shear =
+      mat4::shear(-0.45, 0.15, 0, 0, 0, 0); // QUASE CAINDO - muito evidente
+  mat4 pillar4_shear_inv = mat4::shear_inverse(-0.45, 0.15, 0, 0, 0, 0);
+  mat4 pillar4_T = mat4::translate(CX + 200, 0, CZ + 300);
+  mat4 pillar4_Tinv = mat4::translate_inverse(CX + 200, 0, CZ + 300);
+  world.add(std::make_shared<transform>(pillar4, pillar4_T * pillar4_shear,
+                                        pillar4_shear_inv * pillar4_Tinv));
+
+  // Capitéis (topos decorativos dos pilares - esferas achatadas)
+  // Capitel do Pilar 1
+  auto cap1 = std::make_shared<sphere>(point3(0, 0, 0), 20, mat_ancient_stone,
+                                       "Pillar 1 Capital");
+  mat4 cap1_S = mat4::scale(1.3, 0.4, 1.3);
+  mat4 cap1_Sinv = mat4::scale_inverse(1.3, 0.4, 1.3);
+  mat4 cap1_T =
+      mat4::translate(CX - 220 + 14.4, 120, CZ + 150); // Offset pelo shear
+  mat4 cap1_Tinv = mat4::translate_inverse(CX - 220 + 14.4, 120, CZ + 150);
+  world.add(std::make_shared<transform>(cap1, cap1_T * cap1_S,
+                                        cap1_Sinv * cap1_Tinv));
+
+  // Capitel do Pilar 2
+  auto cap2 = std::make_shared<sphere>(point3(0, 0, 0), 20, mat_ancient_stone,
+                                       "Pillar 2 Capital");
+  mat4 cap2_T = mat4::translate(CX + 220 - 13, 130, CZ + 150 + 6.5);
+  mat4 cap2_Tinv = mat4::translate_inverse(CX + 220 - 13, 130, CZ + 150 + 6.5);
+  world.add(std::make_shared<transform>(cap2, cap2_T * cap1_S,
+                                        cap1_Sinv * cap2_Tinv));
+
+  // ===== 2. REFLEXOS NA ÁGUA COM ESPELHO (Requisito 1.4.5 - Bônus +0.5) =====
+  // Reflexos no Stream Lake (lago ao redor da pedra central)
+  // Altura da superfície da água: y = 2.0 (topo do cilindro de água)
+
+  // Reflexo da gema do pomo da espada no lago
+  auto reflected_gem = std::make_shared<sphere>(
+      point3(CX, GUARD_Y + 31, CZ), 4.5, mat_ruby, "Pomo Gem Original");
+  auto gem_mirrored =
+      reflect_object(reflected_gem, point3(CX, 2.0, CZ), vec3(0, 1, 0));
+  world.add(gem_mirrored);
+
+  // Reflexo do cone decorativo da espada
+  auto reflected_tip = std::make_shared<cone>(
+      cone::from_base(point3(CX, GUARD_Y + 35, CZ), vec3(0, 1, 0), 2.5, 8,
+                      mat_gold, "Tip Cone Original"));
+  auto tip_mirrored =
+      reflect_object(reflected_tip, point3(CX, 2.0, CZ), vec3(0, 1, 0));
+  world.add(tip_mirrored);
+
+  // Reflexo de uma esfera da guarda no lago central
+  auto reflected_guard = std::make_shared<sphere>(
+      point3(CX + 30, GUARD_Y, CZ), 5, mat_gold, "Guard Sphere Original");
+  auto guard_mirrored =
+      reflect_object(reflected_guard, point3(CX, 2.0, CZ), vec3(0, 1, 0));
+  world.add(guard_mirrored);
+
+  // Reflexo na cachoeira (Waterfall Pool) - reflexo de splash spheres
+  // Usando uma esfera de névoa/splash e seu reflexo
+  auto waterfall_splash = std::make_shared<sphere>(
+      point3(WX - 30, 25, WZ + 20), 12, mat_water, "Waterfall Splash");
+  world.add(waterfall_splash);
+  auto splash_mirrored =
+      reflect_object(waterfall_splash, point3(WX, 2.0, WZ), vec3(0, 1, 0));
+  world.add(splash_mirrored);
+
+  // ===== 3. GEMA COM ROTAÇÃO QUATERNION NA GUARDA DA ESPADA (Requisito 1.4.2)
+  // ===== Material safira azul para a gema
+  auto mat_sapphire =
+      std::make_shared<material>(color(0.1, 0.2, 0.8), // Azul safira
+                                 0.2,                  // ka
+                                 0.95,                 // ks - muito brilhante
+                                 256.0,                // shininess muito alto
+                                 "Sapphire Gem");
+
+  // Gema azul com rotação em eixo arbitrário usando quatérnios
+  // Posicionada na guarda da espada principal (lado oposto à esfera dourada)
+  auto quaternion_sapphire = std::make_shared<sphere>(
+      point3(0, 0, 0), 6, mat_sapphire, "Quaternion Sapphire Gem");
+  // Rotação de 30 graus em torno do eixo diagonal (1, 1, 1) - eixo arbitrário
+  auto rotated_sapphire = rotate_axis_object(quaternion_sapphire, vec3(1, 1, 1),
+                                             degrees_to_radians(30));
+  // Posicionar na guarda da espada principal (lado esquerdo)
+  auto positioned_sapphire =
+      translate_object(rotated_sapphire, CX - 30, GUARD_Y, CZ);
+  world.add(positioned_sapphire);
+
+  // Segunda gema com quaternion no centro da guarda (mais visível)
+  auto quaternion_emerald = std::make_shared<sphere>(
+      point3(0, 0, 0), 4,
+      std::make_shared<material>(color(0.1, 0.7, 0.2), 0.2, 0.9, 200.0,
+                                 "Emerald Gem"),
+      "Quaternion Emerald");
+  // Rotação de 60 graus em torno do eixo (0, 1, 1) - outro eixo arbitrário
+  auto rotated_emerald = rotate_axis_object(quaternion_emerald, vec3(0, 1, 1),
+                                            degrees_to_radians(60));
+  auto positioned_emerald =
+      translate_object(rotated_emerald, CX, GUARD_Y + 5, CZ);
+  world.add(positioned_emerald);
+
+  // ===== ILUMINAÇÃO DRAMÁTICA (NOITE/PALCO) =====
+
+  // Luz ambiente muito escura (noite) - destaca a luz direcional na espada
+  ambient = ambient_light(0.03, 0.035, 0.06); // Muito escura, levemente azulada
+
+  // LUZ DIRECIONAL (Requisito 1.5.3 - Bônus +0.5)
+  // Vem de DIRETAMENTE ACIMA como luz de palco/hotspot na espada
+  lights.push_back(std::make_shared<directional_light>(
+      vec3(0, -1, 0),            // Direção: DIRETAMENTE de cima (vertical)
+      color(0.85, 0.80, 0.70))); // Luz suave e quente (não estoura)
+
+  // Spot light secundário para efeito místico suave
+  auto spot_dir = unit_vector(vec3(0.05, -1, 0));
   lights.push_back(std::make_shared<spot_light>(
-      point3(CX, 600, CZ - 80), spot_dir,
-      color(1.2, 1.1,
-            1.0),             // Luz solar um pouco
-                              // mais suave
-      degrees_to_radians(12), // Cone interno
-      degrees_to_radians(35), // Cone externo mais suave
-      1.0, 0.000002, 0.0000001));
+      point3(CX, 400, CZ), spot_dir,
+      color(0.3, 0.25, 0.4),  // Luz roxa mística bem suave
+      degrees_to_radians(20), // Cone interno
+      degrees_to_radians(50), // Cone externo
+      1.0, 0.000008, 0.0000005));
 
   // Luz 4 (Point Light - Cachoeira Glow)
   lights.push_back(
