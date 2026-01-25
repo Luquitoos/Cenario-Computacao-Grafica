@@ -42,12 +42,13 @@
 #include "../include/vectors/mat4.h"
 #include "../include/vectors/vec3.h"
 #include "../include/vectors/vec4.h"
+#include "../include/gui/gui_manager.h"
 
 #include <GL/freeglut.h>
 
 // ==================== CONFIGURAÇÕES GLOBAIS ====================
-const int IMAGE_WIDTH = 800;
-const int IMAGE_HEIGHT = 800;
+const int IMAGE_WIDTH = 400;
+const int IMAGE_HEIGHT = 400;
 unsigned char *PixelBuffer = nullptr;
 
 // Cena
@@ -125,15 +126,39 @@ color ray_color(const ray &r, const hittable_list &world) {
 
 // ==================== FUNÇÃO DE PICK (Requisito 5.1) ====================
 void perform_pick(int mouse_x, int mouse_y) {
-  // Converter coordenadas de tela para coordenadas normalizadas
+  // Obter tamanho atual da janela
+  int window_width = glutGet(GLUT_WINDOW_WIDTH);
+  int window_height = glutGet(GLUT_WINDOW_HEIGHT);
+  
+  // A imagem é desenhada com glRasterPos2i(-1, -1), ou seja, no canto INFERIOR ESQUERDO
+  // Coordenadas do mouse GLUT: (0,0) = canto SUPERIOR esquerdo
+  // Então a imagem ocupa: x=[0, IMAGE_WIDTH], y=[window_height-IMAGE_HEIGHT, window_height]
+  
+  // Calcular a posição Y da imagem na janela (começa de baixo)
+  int image_y_start = window_height - IMAGE_HEIGHT;  // Onde a imagem começa (de cima para baixo)
+  
+  // Verificar se o clique está dentro da área da imagem
+  if (mouse_x < 0 || mouse_x >= IMAGE_WIDTH ||
+      mouse_y < image_y_start || mouse_y >= window_height) {
+    // Clique fora da área da imagem (nas bordas pretas)
+    std::cout << "\n[Pick] Clique fora da area da imagem\n";
+    return;
+  }
+  
+  // Converter coordenadas do mouse para coordenadas relativas à imagem
+  // mouse_y relativo à imagem = mouse_y - image_y_start
+  int image_mouse_y = mouse_y - image_y_start;
+  
+  // Converter para coordenadas normalizadas [0,1]
   double u = double(mouse_x) / IMAGE_WIDTH;
-  double v = double(IMAGE_HEIGHT - mouse_y) / IMAGE_HEIGHT;
+  double v = double(IMAGE_HEIGHT - image_mouse_y) / IMAGE_HEIGHT;
 
   ray r = cam.get_ray(u, v);
   hit_record rec;
 
   std::cout << "\n========== PICK ==========\n";
   std::cout << "Mouse: (" << mouse_x << ", " << mouse_y << ")\n";
+  std::cout << "Image Mouse Y: " << image_mouse_y << "\n";
   std::cout << "UV: (" << u << ", " << v << ")\n";
 
   if (world.hit(r, 0.001, infinity, rec)) {
@@ -145,9 +170,16 @@ void perform_pick(int mouse_x, int mouse_y) {
     std::cout << "Normal: (" << rec.normal.x() << ", " << rec.normal.y() << ", "
               << rec.normal.z() << ")\n";
     std::cout << "Distancia (t): " << rec.t << "\n";
+    
+    // Mostrar GUI com propriedades do objeto
+    GUIManager::show(rec.object_name, rec.mat->name,
+                     rec.p.x(), rec.p.y(), rec.p.z(),
+                     rec.normal.x(), rec.normal.y(), rec.normal.z(),
+                     rec.t);
   } else {
     picked_object = "Fundo (Ceu)";
     std::cout << "OBJETO: Fundo (Ceu)\n";
+    GUIManager::hide();
   }
   std::cout << "==========================\n";
 }
@@ -651,6 +683,94 @@ void create_scene() {
   world.add(std::make_shared<transform>(cap2, cap2_T * cap1_S,
                                         cap1_Sinv * cap2_Tinv));
 
+  // ===== TOCHA PRÓXIMA À CLIFF ROCK (Uso criativo de CONE + vec4) =====
+  // Tocha estilo medieval: poste vertical fincado no chão com chama no topo
+  // Posicionada próxima às rochas, mas NO CHÃO (como na imagem de referência)
+  
+  // Material para a chama externa (laranja brilhante - emissivo)
+  auto mat_torch_flame = std::make_shared<material>(
+      color(1.0, 0.55, 0.1),  // Laranja quente
+      0.95,                   // ka muito alto - simula emissão
+      0.25,                   // ks
+      8.0,                    // shininess
+      "Torch Flame");
+
+  // Material para o núcleo da chama (amarelo intenso)
+  auto mat_torch_core = std::make_shared<material>(
+      color(1.0, 0.85, 0.2),  // Amarelo dourado
+      0.98,                   // ka máximo
+      0.15, 4.0,
+      "Torch Core");
+
+  // Material para o poste de madeira (marrom escuro)
+  auto mat_torch_pole = std::make_shared<material>(
+      color(0.25, 0.15, 0.08), // Marrom escuro
+      0.12,                    // ka baixo
+      0.04,                    // ks - fosco
+      4.0,
+      "Torch Pole");
+
+  // POSIÇÃO DA TOCHA usando vec4
+  // Câmera em (1050, 200, 750), olhando para (900, 100, 900)
+  // Tocha posicionada ENTRE a câmera e o centro, à esquerda da pedra
+  // Esta posição está no campo de visão da câmera
+  vec4 torch_base_pos = vec4(CX - 100, 0, CZ - 80, 1.0);  // (800, 0, 820)
+  point3 base_pos = torch_base_pos.to_point3();
+
+  // Altura do poste
+  const double POLE_HEIGHT = 120.0;
+
+  // 1. POSTE DE MADEIRA (cilindro vertical fincado no chão)
+  world.add(std::make_shared<cylinder>(
+      base_pos,
+      vec3(0, 1, 0),        // Vertical
+      4,                    // Raio do poste
+      POLE_HEIGHT,          // Altura do poste
+      mat_torch_pole,
+      "Torch Pole"));
+
+  // Posição do topo do poste usando vec4
+  vec4 pole_top_vec4 = torch_base_pos + vec4(0, POLE_HEIGHT, 0, 0);
+  point3 pole_top = pole_top_vec4.to_point3();
+
+  // 2. CHAMA EXTERNA (CONE laranja) - no topo do poste
+  auto flame_outer = cone::from_base(
+      point3(0, 0, 0),
+      vec3(0, 1, 0),        // Aponta para cima
+      12,                   // Raio base
+      35,                   // Altura
+      mat_torch_flame,
+      "Torch Flame Outer");
+
+  mat4 fo_T = mat4::translate(pole_top.x(), pole_top.y(), pole_top.z());
+  mat4 fo_Tinv = mat4::translate_inverse(pole_top.x(), pole_top.y(), pole_top.z());
+  world.add(std::make_shared<transform>(
+      std::make_shared<cone>(flame_outer), fo_T, fo_Tinv));
+
+  // 3. NÚCLEO DA CHAMA (CONE amarelo menor) - ligeiramente acima
+  auto flame_inner = cone::from_base(
+      point3(0, 0, 0),
+      vec3(0, 1, 0),
+      6,                    // Raio menor
+      25,                   // Altura menor
+      mat_torch_core,
+      "Torch Flame Core");
+
+  mat4 fi_T = mat4::translate(pole_top.x(), pole_top.y() + 5, pole_top.z());
+  mat4 fi_Tinv = mat4::translate_inverse(pole_top.x(), pole_top.y() + 5, pole_top.z());
+  world.add(std::make_shared<transform>(
+      std::make_shared<cone>(flame_inner), fi_T, fi_Tinv));
+
+  // 4. FONTE DE LUZ PONTUAL (ilumina a área)
+  vec4 light_pos_vec4 = pole_top_vec4 + vec4(0, 25, 0, 0);
+  point3 torch_light_pos = light_pos_vec4.to_point3();
+  lights.push_back(std::make_shared<point_light>(
+      torch_light_pos,
+      color(1.0, 0.6, 0.2),  // Luz laranja quente
+      0.8,                   // Intensidade
+      0.001,                 // Atenuação linear
+      0.00004));             // Atenuação quadrática
+
   // ===== 2. REFLEXOS NA ÁGUA COM ESPELHO (Requisito 1.4.5 - Bônus +0.5) =====
   // Reflexos no Stream Lake (lago ao redor da pedra central)
   // Altura da superfície da água: y = 2.0 (topo do cilindro de água)
@@ -858,6 +978,9 @@ void display() {
     }
   }
 
+  // Desenhar GUI de propriedades (se visível)
+  GUIManager::draw();
+
   glutSwapBuffers();
 }
 
@@ -1049,6 +1172,12 @@ void special_keys(int key, int x, int y) {
 }
 
 void mouse(int button, int state, int x, int y) {
+  // Primeiro verificar se o clique foi na GUI
+  if (GUIManager::handleMouseClick(x, y, button, state)) {
+    glutPostRedisplay();
+    return; // Clique consumido pela GUI
+  }
+  
   if (button == GLUT_LEFT_BUTTON && state == GLUT_DOWN) {
     perform_pick(x, y);
     glutPostRedisplay();
