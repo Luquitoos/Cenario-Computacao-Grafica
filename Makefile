@@ -15,7 +15,7 @@ INCLUDE_DIR = include
 BUILD_DIR = build
 
 # Arquivos fonte
-SOURCES = $(SRC_DIR)/main.cpp
+SOURCES = $(SRC_DIR)/main.cpp $(SRC_DIR)/globals.cpp $(SRC_DIR)/scene_setup.cpp $(SRC_DIR)/renderer.cpp $(SRC_DIR)/input_handlers.cpp $(SRC_DIR)/stb_impl.cpp $(SRC_DIR)/gui/gui_manager.cpp $(SRC_DIR)/gui/gui_primitives.cpp $(SRC_DIR)/gui/gui_render.cpp $(SRC_DIR)/gui/gui_input.cpp
 
 # Nome do executável
 TARGET = raytracer.exe

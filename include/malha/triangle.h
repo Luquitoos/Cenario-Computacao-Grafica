@@ -5,11 +5,10 @@
 #include "../vectors/vec3.h"
 #include <cmath>
 
-// TRIÂNGULO (base para malhas)
 class triangle : public hittable {
 public:
-  point3 v0, v1, v2; // Vértices
-  vec3 normal;       // Normal do triângulo
+  point3 v0, v1, v2;
+  vec3 normal;
   std::shared_ptr<material> mat;
   std::string name;
 
@@ -18,13 +17,12 @@ public:
            std::shared_ptr<material> m,
            const std::string &obj_name = "Triangle")
       : v0(a), v1(b), v2(c), mat(m), name(obj_name) {
-    // Calcular normal (sentido anti-horário)
+
     vec3 e1 = v1 - v0;
     vec3 e2 = v2 - v0;
     normal = unit_vector(cross(e1, e2));
   }
 
-  // Interseção usando algoritmo de Möller-Trumbore
   bool hit(const ray &r, double t_min, double t_max,
            hit_record &rec) const override {
     const double EPSILON = 1e-8;
@@ -36,7 +34,7 @@ public:
     double a = dot(e1, h);
 
     if (std::abs(a) < EPSILON) {
-      return false; // Raio paralelo ao triângulo
+      return false;
     }
 
     double f = 1.0 / a;

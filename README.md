@@ -22,7 +22,7 @@ Uma **espada medieval cravada em uma pedra**, inspirada na lenda do Rei Arthur.
 
 ### Textura (1.3.3) 
 - Textura procedural de pedra
-- Textura checker no chão
+- Textura checker no chãoo
 
 ### Transformações (1.4) 
 - Translação: posicionamento de todos objetos
