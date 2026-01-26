@@ -20,6 +20,7 @@
 #include <memory>
 #include <string>
 #include <vector>
+#include <map>
 
 #define STB_IMAGE_IMPLEMENTATION
 #include "../include/camera/camera.h"
@@ -47,8 +48,8 @@
 #include <GL/freeglut.h>
 
 // ==================== CONFIGURAÇÕES GLOBAIS ====================
-const int IMAGE_WIDTH = 400;
-const int IMAGE_HEIGHT = 400;
+const int IMAGE_WIDTH = 800;
+const int IMAGE_HEIGHT = 800;
 unsigned char *PixelBuffer = nullptr;
 
 // Cena
@@ -63,11 +64,76 @@ int vanishing_points = 3;   // 1, 2 ou 3 pontos de fuga
 bool need_redraw = true;
 std::string picked_object = "";
 
+// (Variáveis de brilho movidas para junto de toggle_blade_shine)
+
+// Estado Dia/Noite
+bool is_night_mode = false;
+color sky_color_top(0.15, 0.2, 0.4);      // Azul escuro (Dia)
+color sky_color_bottom(0.5, 0.4, 0.6);    // Roxo suave (Dia)
+
+// ==================== ESTADO DE TRANSFORMAÇÃO ====================
+struct TransformState {
+    vec3 scale;
+    vec3 rotation;    // Euler angles em graus (X, Y, Z)
+    vec3 translation;
+    
+    TransformState() : scale(1,1,1), rotation(0,0,0), translation(0,0,0) {}
+};
+
+// Mapas globais para controle de objetos transformáveis
+std::map<std::string, TransformState> object_states;
+std::map<std::string, std::shared_ptr<transform>> object_transforms;
+std::string selected_transform_name = ""; // Nome do objeto transformável selecionado atualmente
+
+// Função para atualizar a matriz de um objeto baseado no seu estado
+void update_object_transform(const std::string& name) {
+    if (object_states.find(name) == object_states.end() || 
+        object_transforms.find(name) == object_transforms.end()) {
+        return;
+    }
+    
+    TransformState& state = object_states[name];
+    auto trans_ptr = object_transforms[name];
+    
+    // Recriar a transformação composta: Scale -> Rotate -> Translate
+    // Ordem inversa: Translate * Rotate * Scale * Ponto
+    
+    // Rotação (Euler XYZ)
+    mat4 Rx = mat4::rotate_x(degrees_to_radians(state.rotation.x()));
+    mat4 Ry = mat4::rotate_y(degrees_to_radians(state.rotation.y()));
+    mat4 Rz = mat4::rotate_z(degrees_to_radians(state.rotation.z()));
+    mat4 R = Rz * Ry * Rx; // Z * Y * X
+    
+    // Translação e Escala
+    mat4 T = mat4::translate(state.translation.x(), state.translation.y(), state.translation.z());
+    mat4 S = mat4::scale(state.scale.x(), state.scale.y(), state.scale.z());
+    
+    // Matriz Forward (Mundo <- Objeto)
+    trans_ptr->forward = T * R * S;
+    
+    // Inversas
+    mat4 Rinv = mat4::rotate_x_inverse(degrees_to_radians(state.rotation.x())) * 
+                mat4::rotate_y_inverse(degrees_to_radians(state.rotation.y())) * 
+                mat4::rotate_z_inverse(degrees_to_radians(state.rotation.z()));
+                
+    mat4 Tinv = mat4::translate_inverse(state.translation.x(), state.translation.y(), state.translation.z());
+    mat4 Sinv = mat4::scale_inverse(state.scale.x(), state.scale.y(), state.scale.z());
+    
+    // Matriz Inverse (Objeto <- Mundo) = Sinv * Rinv * Tinv
+    trans_ptr->inverse = Sinv * Rinv * Tinv;
+    
+    // Normal Mat = Transpose(Inverse)
+    trans_ptr->normal_mat = trans_ptr->inverse.transpose();
+    
+    need_redraw = true;
+}
+
 // Câmera interativa
 // NOTA: Coordenadas ajustadas para primeiro octante (x, y, z >= 0)
 point3 cam_eye(1050, 200, 750); // Posição inicial (400+650, 200, 100+650)
 point3 cam_at(900, 100,
               900); // Olhando para o centro da cena (250+650, 100, 250+650)
+vec3 cam_up(0, 1, 0); // Vetor Up (padrão: Y+)
 double cam_speed = 30.0; // Velocidade de movimento
 
 // ==================== MODELO DE ILUMINAÇÃO PHONG ====================
@@ -116,12 +182,10 @@ color ray_color(const ray &r, const hittable_list &world) {
     return calculate_lighting(rec, r, world);
   }
 
-  // Cor de fundo (gradiente de céu místico)
+  // Cor de fundo (gradiente dinâmico dependendo do horário)
   vec3 unit_direction = unit_vector(r.direction());
   double t = 0.5 * (unit_direction.y() + 1.0);
-  color sky_top(0.15, 0.2, 0.4);   // Azul escuro
-  color sky_bottom(0.5, 0.4, 0.6); // Roxo suave
-  return sky_bottom * (1.0 - t) + sky_top * t;
+  return sky_color_bottom * (1.0 - t) + sky_color_top * t;
 }
 
 // ==================== FUNÇÃO DE PICK (Requisito 5.1) ====================
@@ -176,8 +240,51 @@ void perform_pick(int mouse_x, int mouse_y) {
                      rec.p.x(), rec.p.y(), rec.p.z(),
                      rec.normal.x(), rec.normal.y(), rec.normal.z(),
                      rec.t);
+                     
+    // Verificar se pertence a um grupo transformável
+    selected_transform_name = "";
+    
+    // Regra para ESPADA
+    if (rec.object_name == "Lamina" || 
+        rec.object_name == "Guarda Principal" || 
+        rec.object_name == "Guarda Esq" || 
+        rec.object_name == "Guarda Dir" || 
+        rec.object_name == "Guarda Centro" || 
+        rec.object_name == "Cabo" || 
+        rec.object_name == "Pomo" || 
+        rec.object_name == "Ponta" ||
+        rec.object_name == "Quaternion Sapphire Gem" ||
+        rec.object_name == "Quaternion Emerald") {
+        selected_transform_name = "Espada Completa";
+    }
+    // Regra para TOCHA
+    else if (rec.object_name == "Torch Pole" ||
+             rec.object_name == "Torch Flame Outer" ||
+             rec.object_name == "Torch Flame Core") {
+        selected_transform_name = "Tocha Medieval";
+    }
+    // Regra para PILAR 1
+    else if (rec.object_name == "Ruined Pillar 1" ||
+             rec.object_name == "Pillar 1 Capital") {
+        selected_transform_name = "Pilar Ruina 1";
+    }
+    // Regra para PILAR 2
+    else if (rec.object_name == "Ruined Pillar 2" ||
+             rec.object_name == "Pillar 2 Capital") {
+        selected_transform_name = "Pilar Ruina 2";
+    }
+    // Regra genérica: se o objeto clicado tem um transform registrado com seu nome
+    else if (object_transforms.find(rec.object_name) != object_transforms.end()) {
+        selected_transform_name = rec.object_name;
+    }
+    
+    if (!selected_transform_name.empty()) {
+        std::cout << "Selecionado Transformavel: " << selected_transform_name << "\n";
+    }
+    
   } else {
     picked_object = "Fundo (Ceu)";
+    selected_transform_name = ""; // Limpar seleção
     std::cout << "OBJETO: Fundo (Ceu)\n";
     GUIManager::hide();
   }
@@ -187,13 +294,216 @@ void perform_pick(int mouse_x, int mouse_y) {
 // Forward declaration
 void setup_camera();
 
+// Estado do brilho da lâmina (toggle)
+bool blade_shine_enabled = false;  // Começa SEM brilho
+std::shared_ptr<material> mat_metal_ptr = nullptr;  // Ponteiro para o material da lâmina
+std::shared_ptr<light> sword_light_ptr = nullptr;   // Luz dinâmica que acompanha a espada
+
+// ==================== ATUALIZAR LUZ DA ESPADA ====================
+void update_sword_light() {
+    // 1. Remover luz antiga se existir
+    if (sword_light_ptr) {
+        auto it = std::find(lights.begin(), lights.end(), sword_light_ptr);
+        if (it != lights.end()) {
+            lights.erase(it);
+        }
+        sword_light_ptr = nullptr;
+    }
+
+    // 2. Se brilho desligado, sai
+    if (!blade_shine_enabled) return;
+
+    // 3. Obter estado atual de transformação
+    vec3 t_vec(900, 195, 900); // Default
+    vec3 r_vec(0,0,0);
+    vec3 s_vec(1,1,1);
+    
+    if (object_states.find("Espada Completa") != object_states.end()) {
+        TransformState& state = object_states["Espada Completa"];
+        t_vec = state.translation;
+        r_vec = state.rotation;
+        s_vec = state.scale;
+    }
+
+    // 4. Reconstruir Matriz Modelo (T * R * S)
+    // Rotação (Euler XYZ)
+    mat4 Rx = mat4::rotate_x(degrees_to_radians(r_vec.x()));
+    mat4 Ry = mat4::rotate_y(degrees_to_radians(r_vec.y()));
+    mat4 Rz = mat4::rotate_z(degrees_to_radians(r_vec.z()));
+    mat4 R = Rz * Ry * Rx; 
+    
+    mat4 T = mat4::translate(t_vec.x(), t_vec.y(), t_vec.z());
+    mat4 S = mat4::scale(s_vec.x(), s_vec.y(), s_vec.z());
+    
+    mat4 M = T * R * S;
+
+    // 5. Ponto local na lâmina
+    // Lâmina vai de 0 a -130 em Y (por causa da rotação interna do grupo).
+    // Posicionar luz no meio da lâmina (-50) e levemente afastada em Z (+15) para iluminar a face
+    vec4 local_pos(0, -50, 15, 1.0);
+    
+    // Transformar para Mundo
+    vec4 world_pos = M * local_pos;
+    
+    // 6. Criar nova luz
+    sword_light_ptr = std::make_shared<point_light>(
+        point3(world_pos[0], world_pos[1], world_pos[2]),
+        color(0.5, 0.7, 1.0), // Azulado intenso
+        2.5,                  // Intensidade alta
+        0.001, 0.0001
+    );
+    
+    lights.push_back(sword_light_ptr);
+}
+
+// ==================== FUNÇÃO TOGGLE BRILHO DA LÂMINA ====================
+void toggle_blade_shine(bool increase) {
+  if (increase && !blade_shine_enabled) {
+    // Ligar brilho
+    blade_shine_enabled = true;
+    if (mat_metal_ptr) {
+      // Brilho MUITO alto e saturado para ser visível
+      mat_metal_ptr->ks = color(4.0, 4.0, 5.0);  // Valores > 1 para saturar
+      mat_metal_ptr->shininess = 64.0;           // Menor shininess = destaque maior/mais espalhado
+    }
+    std::cout << "[Brilho] Lamina: LIGADO\n";
+  } else if (!increase && blade_shine_enabled) {
+    // Desligar brilho
+    blade_shine_enabled = false;
+    if (mat_metal_ptr) {
+      mat_metal_ptr->ks = color(0.1, 0.1, 0.1);  // Brilho baixo
+      mat_metal_ptr->shininess = 8.0;
+    }
+    std::cout << "[Brilho] Lamina: DESLIGADO\n";
+  }
+  
+  // Atualizar a luz dinâmica
+  update_sword_light();
+  need_redraw = true;
+}
+
+// ==================== CONFIGURAÇÃO DE ILUMINAÇÃO ====================
+void setup_lighting() {
+  lights.clear();
+  const double CX = 900.0;
+  const double CZ = 900.0;
+  
+  const double WX = 710.0;
+  const double WZ = 1090.0;
+  
+  // Posição da luz da tocha (recalculada para garantir consistência)
+  vec4 torch_base_pos = vec4(CX - 100, 0, CZ - 80, 1.0);
+  double POLE_HEIGHT = 120.0;
+  vec4 pole_top_vec4 = torch_base_pos + vec4(0, POLE_HEIGHT, 0, 0);
+  point3 torch_light_pos = (pole_top_vec4 + vec4(0, 25, 0, 0)).to_point3();
+
+  if (is_night_mode) {
+    // --- NOITE (Dramatica/Palco) ---
+    // Luz ambiente muito escura (noite)
+    ambient.intensity = color(0.03, 0.035, 0.06); // Muito escura, levemente azulada
+    
+    // LUZ DIRECIONAL (Palco/Hotspot - Requisito 1.5.3)
+    // Vem de DIRETAMENTE ACIMA como luz de palco/hotspot na espada
+    lights.push_back(std::make_shared<directional_light>(
+        vec3(0, -1, 0),            // Direção: DIRETAMENTE de cima (vertical)
+        color(0.85, 0.80, 0.70))); // Luz suave e quente
+    
+    // Spot light secundário para efeito místico suave
+    auto spot_dir = unit_vector(vec3(0.05, -1, 0));
+    lights.push_back(std::make_shared<spot_light>(
+        point3(CX, 400, CZ), spot_dir,
+        color(0.3, 0.25, 0.4),  // Luz roxa mística bem suave
+        degrees_to_radians(20), // Cone interno
+        degrees_to_radians(50), // Cone externo
+        1.0, 0.000008, 0.0000005));
+
+    // Luz da Tocha: Muito mais visível e importante à noite
+    lights.push_back(std::make_shared<point_light>(
+        torch_light_pos,
+        color(1.0, 0.6, 0.2),  // Laranja
+        2.5,                   // Intensidade ALTA na noite
+        0.001, 0.00004
+    ));
+
+    // Luz (Point Light - Cachoeira Glow)
+    lights.push_back(std::make_shared<point_light>(
+        point3(WX, 50, WZ),   // Base da cachoeira
+        color(0.4, 0.7, 1.0), // Azul claro
+        0.6, 0.003, 0.00005
+    ));
+
+    // Luz de preenchimento (Laranja) - Iluminar rochas
+    lights.push_back(std::make_shared<point_light>(
+        point3(CX - 80, 100, CZ + 80), 
+        color(0.8, 0.5, 0.2), 
+        0.5, 0.001, 0.0001
+    ));
+
+    // Luz de preenchimento azulada (mágica) do outro lado
+    lights.push_back(std::make_shared<point_light>(
+        point3(CX + 80, 120, CZ - 80), 
+        color(0.2, 0.4, 0.8), 
+        0.4, 0.001, 0.0001
+    ));
+    
+    // Céu Noturno
+    sky_color_top = color(0.02, 0.02, 0.05);      // Quase preto
+    sky_color_bottom = color(0.05, 0.05, 0.1);    // Azul muito escuro
+    
+  } else {
+    // --- DIA (Original) ---
+    // Luz Ambiente: Clara e quente
+    ambient.intensity = color(0.3, 0.3, 0.3);
+    
+    // Sol Principal (Direcional, Amarelo Claro)
+    vec3 sun_dir = unit_vector(vec3(1.0, -1.0, -0.5)); // Vindo da esquerda/cima
+    lights.push_back(std::make_shared<directional_light>(
+        sun_dir,
+        color(1.0, 0.95, 0.9) * 0.8 // Amarelo/Branco sol * Forte
+    ));
+    
+    // Luz da Tocha: Menos impactante de dia, mas ainda existe
+    lights.push_back(std::make_shared<point_light>(
+        torch_light_pos,
+        color(1.0, 0.6, 0.2),
+        0.8,                   // Normal
+        0.001, 0.00004
+    ));
+    
+    // Céu Diurno Místico (Original)
+    sky_color_top = color(0.15, 0.2, 0.4);
+    sky_color_bottom = color(0.5, 0.4, 0.6);
+  }
+}
+
+// ==================== TOGGLE DAY/NIGHT ====================
+void toggle_day_night(bool set_to_night) {
+  is_night_mode = set_to_night;
+  setup_lighting();
+  std::cout << "[Ambiente] Modo alterado para: " << (is_night_mode ? "NOITE" : "DIA") << "\n";
+  need_redraw = true;
+}
+
 // ==================== CRIAÇÃO DA CENA ====================
 void create_scene() {
   world.clear();
-  lights.clear();
+  
+  // Limpar mapas de transformação
+  object_states.clear();
+  object_transforms.clear();
+  
+  // Configurar Luzes
+  setup_lighting();
 
   // ===== MATERIAIS =====
   auto mat_metal = materials::sword_metal();
+  mat_metal_ptr = mat_metal;  // Guardar referência para modificar brilho depois
+  
+  // Aplicar estado inicial do brilho (sem brilho)
+  if (!blade_shine_enabled) {
+    mat_metal->ks = color(0.1, 0.1, 0.1);  // Brilho desativado
+    mat_metal->shininess = 8.0;
+  }
   auto mat_stone = materials::stone();
   auto mat_leather = materials::leather();
   auto mat_ruby = materials::ruby_gem();
@@ -507,97 +817,116 @@ void create_scene() {
       point3(CX + 35, MOUNTAIN_HEIGHT + 85, CZ + 25), mat_stone, "Pedra Topo");
   world.add(stone_top);
 
-  // ===== ESPADA CRAVADA NA PEDRA =====
-  // A lâmina aponta para CIMA (Y+) na
-  // definição local Depois translada para
-  // que a PONTA fique dentro da pedra
-
+  // ===== ESPADA CRAVADA NA PEDRA (AGRUPADA E TRANSFORMÁVEL) =====
+  
+  // 1. Criar grupo para os componentes da espada
+  // As coordenadas agora são RELATIVAS ao centro da espada (Pivô na guarda/base da lâmina)
+  auto sword_parts = std::make_shared<hittable_list>();
+  
   const double BLADE_LENGTH = 130.0;
-  // A guarda deve ficar acima do topo da
-  // pedra. Topo da pedra = MOUNTAIN_HEIGHT + 85 = 130
-  // Nova altura = 195 (65 unidades acima do topo) (Subido MAIS AINDA x2
-  // conforme pedido)
-  const double GUARD_Y = 195.0;
-
-  // 1. Lâmina (MALHA) - definida apontando
-  // para cima
-  auto blade = std::make_shared<blade_mesh>(point3(0, 0, 0), // Base
-                                            point3(0, BLADE_LENGTH,
-                                                   0), // Ponta para CIMA
-                                            10, 3,     // Largura MENOR,
-                                                       // espessura FINA
-                                            mat_metal, "Lamina da Espada",
-                                            0.40); // Afina a partir de 40%
-                                                   // (bem evidente)
-
-  // Rotacionar: 180 graus em Z (inverte) +
-  // 90 graus em Y (gira)
-  mat4 blade_Rz = mat4::rotate_z(degrees_to_radians(180));
-  mat4 blade_Ry = mat4::rotate_y(degrees_to_radians(90));
-  mat4 blade_R = blade_Ry * blade_Rz; // Combina rotações
-  mat4 blade_T = mat4::translate(CX, GUARD_Y, CZ);
-  mat4 blade_M = blade_T * blade_R;
-
-  mat4 blade_Rzinv = mat4::rotate_z_inverse(degrees_to_radians(180));
-  mat4 blade_Ryinv = mat4::rotate_y_inverse(degrees_to_radians(90));
-  mat4 blade_Rinv = blade_Rzinv * blade_Ryinv;
-  mat4 blade_Tinv = mat4::translate_inverse(CX, GUARD_Y, CZ);
-  mat4 blade_Minv = blade_Rinv * blade_Tinv;
-
-  world.add(std::make_shared<transform>(blade, blade_M, blade_Minv));
-
-  // 2. Guarda elaborada (CILINDROS +
-  // ESFERAS) Cilindro principal horizontal
-  auto guard_main = std::make_shared<cylinder>(point3(0, 0, 0),
-                                               vec3(1, 0,
-                                                    0), // Eixo horizontal (X)
-                                               3.5,
-                                               55, // Raio menor, comprimento
-                                               mat_gold, "Guarda Principal");
-  mat4 guard_T = mat4::translate(CX - 27.5, GUARD_Y, CZ);
-  mat4 guard_Tinv = mat4::translate_inverse(CX - 27.5, GUARD_Y, CZ);
-  world.add(std::make_shared<transform>(guard_main, guard_T, guard_Tinv));
-
-  // Esferas decorativas nas pontas da
-  // guarda
-  world.add(std::make_shared<sphere>(point3(CX - 30, GUARD_Y, CZ), 5, mat_gold,
-                                     "Guarda Esq"));
-  world.add(std::make_shared<sphere>(point3(CX + 30, GUARD_Y, CZ), 5, mat_gold,
-                                     "Guarda Dir"));
-
-  // Cilindro central da guarda (mais
-  // grosso)
+  
+  // 1.1 Lâmina
+  // Aponta para cima (Y+), base em (0,0,0)
+  auto blade_mesh_obj = std::make_shared<blade_mesh>(
+      point3(0, 0, 0), point3(0, BLADE_LENGTH, 0), 
+      10, 3, mat_metal, "Lamina", 0.40);
+      
+  // Rotacionar localmente a lâmina para ficar correta no grupo
+  // Rotação: 180 em Z + 90 em Y (igual ao original)
+  mat4 bl_R = mat4::rotate_y(degrees_to_radians(90)) * mat4::rotate_z(degrees_to_radians(180));
+  mat4 bl_Rinv = mat4::rotate_z_inverse(degrees_to_radians(180)) * mat4::rotate_y_inverse(degrees_to_radians(90));
+  // Sem translação, pois o pivô é a origem local
+  sword_parts->add(std::make_shared<transform>(blade_mesh_obj, bl_R, bl_Rinv));
+  
+  // 1.2 Guarda Principal (Horizontal X)
+  // Centralizada em (0,0,0) localmente, mas deslocada um pouco para alinhar com a lâmina
+  // No original: CX-27.5. Como o centro é CX, deslocamento local é -27.5 em X
+  auto guard_main = std::make_shared<cylinder>(
+      point3(0, 0, 0), vec3(1, 0, 0), 3.5, 55, mat_gold, "Guarda Principal");
+  sword_parts->add(translate_object(guard_main, -27.5, 0, 0));
+  
+  // Esferas da guarda
+  sword_parts->add(std::make_shared<sphere>(point3(-30, 0, 0), 5, mat_gold, "Guarda Esq"));
+  sword_parts->add(std::make_shared<sphere>(point3(30, 0, 0), 5, mat_gold, "Guarda Dir"));
+  
+  // 1.3 Guarda Centro (Vertical Y)
+  // Original: GUARD_Y - 4. Em relação a GUARD_Y, é -4.
   auto guard_center = std::make_shared<cylinder>(
-      point3(0, 0, 0), vec3(0, 1, 0), // Vertical curto
-      6, 8, mat_gold, "Guarda Centro");
-  mat4 gc_T = mat4::translate(CX, GUARD_Y - 4, CZ);
-  mat4 gc_Tinv = mat4::translate_inverse(CX, GUARD_Y - 4, CZ);
-  world.add(std::make_shared<transform>(guard_center, gc_T, gc_Tinv));
+      point3(0, 0, 0), vec3(0, 1, 0), 6, 8, mat_gold, "Guarda Centro");
+  sword_parts->add(translate_object(guard_center, 0, -4, 0));
+  
+  // 1.4 Cabo (Vertical Y)
+  // Original: GUARD_Y + 4. Relativo: +4
+  auto handle = std::make_shared<cylinder>(
+      point3(0, 0, 0), vec3(0, 1, 0), 3, 25, mat_leather, "Cabo");
+  sword_parts->add(translate_object(handle, 0, 4, 0));
+  
+  // 1.5 Pomo (Esfera)
+  // Original: GUARD_Y + 31. Relativo: +31
+  sword_parts->add(std::make_shared<sphere>(point3(0, 31, 0), 4.5, mat_ruby, "Pomo"));
+  
+  // 1.6 Ponta Decorativa (Cone)
+  // Original: GUARD_Y + 35. Relativo: +35
+  auto tip_cone = cone::from_base(point3(0, 0, 0), vec3(0, 1, 0), 2.5, 8, mat_gold, "Ponta");
+  sword_parts->add(translate_object(std::make_shared<cone>(tip_cone), 0, 35, 0));
+  
+  // 1.7 Gema Safira (Quaternion Rotation) - Lado Esquerdo da Guarda
+  // Material safira azul
+  auto mat_sapphire =
+      std::make_shared<material>(color(0.1, 0.2, 0.8), // Azul safira
+                                 0.2,                  // ka
+                                 0.95,                 // ks - muito brilhante
+                                 256.0,                // shininess muito alto
+                                 "Sapphire Gem");
+  // Esfera em origem local, depois rotacionada e transladada
+  auto quaternion_sapphire = std::make_shared<sphere>(
+      point3(0, 0, 0), 6, mat_sapphire, "Quaternion Sapphire Gem");
+  // Rotação de 30 graus em torno do eixo diagonal (1, 1, 1)
+  auto rotated_sapphire = rotate_axis_object(quaternion_sapphire, vec3(1, 1, 1),
+                                             degrees_to_radians(30));
+  // Posição relativa: lado esquerdo da guarda (X = -30, Y = 0, Z = 0)
+  sword_parts->add(translate_object(rotated_sapphire, -30, 0, 0));
+  
+  // 1.8 Gema Esmeralda (Quaternion Rotation) - Lado Direito da Guarda (oposto à Safira)
+  auto mat_emerald = std::make_shared<material>(
+      color(0.1, 0.7, 0.2), 0.2, 0.9, 200.0, "Emerald Gem");
+  auto quaternion_emerald = std::make_shared<sphere>(
+      point3(0, 0, 0), 6, mat_emerald, "Quaternion Emerald");
+  // Rotação de 60 graus em torno do eixo (0, 1, 1)
+  auto rotated_emerald = rotate_axis_object(quaternion_emerald, vec3(0, 1, 1),
+                                            degrees_to_radians(60));
+  // Posição relativa: encaixada na Guarda Dir (X = +30, Y = 0, Z = 0) - igual à Safira na Guarda Esq
+  sword_parts->add(translate_object(rotated_emerald, 30, 0, 0));
+  
+  // 2. CRIAR TRANSFORM MESTRE DA ESPADA
+  // Posição inicial no mundo: (CX, GUARD_Y, CZ)
+  // Topo da pedra = MOUNTAIN_HEIGHT + 85 = 130
+  // GUARD_Y original = 195.
+  const double GUARD_Y = 195.0;
+  
+  std::string sword_name = "Espada Completa";
+  TransformState sword_state;
+  sword_state.translation = vec3(CX, GUARD_Y, CZ);
+  sword_state.rotation = vec3(0, 0, 0);
+  sword_state.scale = vec3(1, 1, 1);
+  
+  // Criar matrizes iniciais
+  mat4 sword_T = mat4::translate(sword_state.translation.x(), sword_state.translation.y(), sword_state.translation.z());
+  mat4 sword_Tinv = mat4::translate_inverse(sword_state.translation.x(), sword_state.translation.y(), sword_state.translation.z());
+  
+  // Criar o transform
+  auto sword_transform = std::make_shared<transform>(sword_parts, sword_T, sword_Tinv);
+  sword_transform->name = sword_name; // Nome especial para o grupo
+  
+  // Registrar no mundo e nos mapas globais
+  world.add(sword_transform);
+  object_states[sword_name] = sword_state;
+  object_transforms[sword_name] = sword_transform;
+  
+  // Mapear também nomes dos componentes para o pai (opcional, mas bom para pick)
+  // Na verdade, o pick retorna o nome do objeto (Leaf), mas queremos selecionar o pai
+  // Faremos isso na lógica de seleção do GUI Manager ou Main
 
-  // 3. Cabo (CILINDRO) - mais curto
-  auto handle = std::make_shared<cylinder>(point3(0, 0, 0),
-                                           vec3(0, 1, 0), // Eixo vertical (Y)
-                                           3, 25, // Raio 3, altura REDUZIDA
-                                           mat_leather, "Cabo da Espada");
-  mat4 handle_T = mat4::translate(CX, GUARD_Y + 4, CZ);
-  mat4 handle_Tinv = mat4::translate_inverse(CX, GUARD_Y + 4, CZ);
-  world.add(std::make_shared<transform>(handle, handle_T, handle_Tinv));
-
-  // 4. Pomo (ESFERA) - conectado ao cabo
-  // Cabo termina em GUARD_Y + 4 + 25 =
-  // GUARD_Y + 29
-  world.add(std::make_shared<sphere>(point3(CX, GUARD_Y + 31, CZ), 4.5,
-                                     mat_ruby, "Gema do Pomo"));
-
-  // 5. CONE decorativo no topo do pomo
-  auto tip_cone = cone::from_base(point3(0, 0, 0), vec3(0, 1, 0), 2.5, 8,
-                                  mat_gold, "Ponta Decorativa");
-  mat4 tip_T = mat4::translate(CX, GUARD_Y + 35,
-                               CZ); // Ajustado para conectar no
-                                    // pomo
-  mat4 tip_Tinv = mat4::translate_inverse(CX, GUARD_Y + 35, CZ);
-  world.add(std::make_shared<transform>(std::make_shared<cone>(tip_cone), tip_T,
-                                        tip_Tinv));
 
   // ===== DEMONSTRAÇÃO DE TRANSFORMAÇÕES (Requisitos 1.4.4 e 1.4.5) =====
 
@@ -615,36 +944,85 @@ void create_scene() {
       "Ancient Stone");
 
   // Posições dos pilares ao redor do lago (formando uma entrada em ruínas)
-  // Pilar 1 - Entrada esquerda (inclinado para a direita)
-  auto pillar1 =
-      std::make_shared<cylinder>(point3(0, 0, 0), vec3(0, 1, 0), 15, 120,
-                                 mat_ancient_stone, "Ruined Pillar 1");
-  mat4 pillar1_shear = mat4::shear(0.35, 0, 0, 0, 0,
-                                   0); // Cisalhamento XY - MUITO EVIDENTE
-  mat4 pillar1_shear_inv = mat4::shear_inverse(0.35, 0, 0, 0, 0, 0);
-  mat4 pillar1_T = mat4::translate(CX - 220, 0, CZ + 150);
-  mat4 pillar1_Tinv = mat4::translate_inverse(CX - 220, 0, CZ + 150);
-  world.add(std::make_shared<transform>(pillar1, pillar1_T * pillar1_shear,
-                                        pillar1_shear_inv * pillar1_Tinv));
+  // ===== PILAR 1 (AGRUPADO E TRANSFORMÁVEL) =====
+  // Pilar de ruína com cisalhamento + capitel no topo
+  auto pillar1_parts = std::make_shared<hittable_list>();
+  
+  // 1.1 Cilindro do pilar com cisalhamento (coords locais)
+  auto pillar1_cyl = std::make_shared<cylinder>(
+      point3(0, 0, 0), vec3(0, 1, 0), 15, 120, mat_ancient_stone, "Ruined Pillar 1");
+  mat4 p1_shear = mat4::shear(0.35, 0, 0, 0, 0, 0); // Cisalhamento estilo erosão
+  mat4 p1_shear_inv = mat4::shear_inverse(0.35, 0, 0, 0, 0, 0);
+  pillar1_parts->add(std::make_shared<transform>(pillar1_cyl, p1_shear, p1_shear_inv));
+  
+  // 1.2 Capitel (esfera achatada no topo, ajustada pelo shear)
+  auto cap1 = std::make_shared<sphere>(point3(0, 0, 0), 20, mat_ancient_stone, "Pillar 1 Capital");
+  mat4 cap1_S = mat4::scale(1.3, 0.4, 1.3);
+  mat4 cap1_Sinv = mat4::scale_inverse(1.3, 0.4, 1.3);
+  // Offset local: altura + deslocamento horizontal pelo shear (0.35 * 120 = 42px em X)
+  mat4 cap1_T = mat4::translate(42, 120, 0);
+  mat4 cap1_Tinv = mat4::translate_inverse(42, 120, 0);
+  pillar1_parts->add(std::make_shared<transform>(cap1, cap1_T * cap1_S, cap1_Sinv * cap1_Tinv));
+  
+  // 2. CRIAR TRANSFORM MESTRE DO PILAR 1
+  std::string pillar1_name = "Pilar Ruina 1";
+  TransformState pillar1_state;
+  pillar1_state.translation = vec3(CX - 220, 0, CZ + 150);
+  pillar1_state.rotation = vec3(0, 0, 0);
+  pillar1_state.scale = vec3(1, 1, 1);
+  
+  mat4 pillar1_T = mat4::translate(pillar1_state.translation.x(), pillar1_state.translation.y(), pillar1_state.translation.z());
+  mat4 pillar1_Tinv = mat4::translate_inverse(pillar1_state.translation.x(), pillar1_state.translation.y(), pillar1_state.translation.z());
+  
+  auto pillar1_transform = std::make_shared<transform>(pillar1_parts, pillar1_T, pillar1_Tinv);
+  pillar1_transform->name = pillar1_name;
+  
+  world.add(pillar1_transform);
+  object_states[pillar1_name] = pillar1_state;
+  object_transforms[pillar1_name] = pillar1_transform;
 
-  // Pilar 2 - Entrada direita (inclinado para a esquerda)
-  auto pillar2 =
-      std::make_shared<cylinder>(point3(0, 0, 0), vec3(0, 1, 0), 15, 130,
-                                 mat_ancient_stone, "Ruined Pillar 2");
-  mat4 pillar2_shear = mat4::shear(-0.30, 0.10, 0, 0, 0,
-                                   0); // Cisalhamento oposto - MUITO EVIDENTE
-  mat4 pillar2_shear_inv = mat4::shear_inverse(-0.30, 0.10, 0, 0, 0, 0);
-  mat4 pillar2_T = mat4::translate(CX + 220, 0, CZ + 150);
-  mat4 pillar2_Tinv = mat4::translate_inverse(CX + 220, 0, CZ + 150);
-  world.add(std::make_shared<transform>(pillar2, pillar2_T * pillar2_shear,
-                                        pillar2_shear_inv * pillar2_Tinv));
+  // ===== PILAR 2 (AGRUPADO E TRANSFORMÁVEL) =====
+  // Pilar de ruína com cisalhamento oposto + capitel no topo
+  auto pillar2_parts = std::make_shared<hittable_list>();
+  
+  // 2.1 Cilindro do pilar com cisalhamento (coords locais)
+  auto pillar2_cyl = std::make_shared<cylinder>(
+      point3(0, 0, 0), vec3(0, 1, 0), 15, 130, mat_ancient_stone, "Ruined Pillar 2");
+  mat4 p2_shear = mat4::shear(-0.30, 0.10, 0, 0, 0, 0); // Cisalhamento oposto
+  mat4 p2_shear_inv = mat4::shear_inverse(-0.30, 0.10, 0, 0, 0, 0);
+  pillar2_parts->add(std::make_shared<transform>(pillar2_cyl, p2_shear, p2_shear_inv));
+  
+  // 2.2 Capitel (esfera achatada no topo, ajustada pelo shear)
+  // Shear: -0.30*130 = -39 em X, 0.10*130 = 13 em Z
+  auto cap2 = std::make_shared<sphere>(point3(0, 0, 0), 20, mat_ancient_stone, "Pillar 2 Capital");
+  mat4 cap2_S = mat4::scale(1.3, 0.4, 1.3);
+  mat4 cap2_Sinv = mat4::scale_inverse(1.3, 0.4, 1.3);
+  mat4 cap2_local_T = mat4::translate(-39, 130, 13);
+  mat4 cap2_local_Tinv = mat4::translate_inverse(-39, 130, 13);
+  pillar2_parts->add(std::make_shared<transform>(cap2, cap2_local_T * cap2_S, cap2_Sinv * cap2_local_Tinv));
+  
+  // 3. CRIAR TRANSFORM MESTRE DO PILAR 2
+  std::string pillar2_name = "Pilar Ruina 2";
+  TransformState pillar2_state;
+  pillar2_state.translation = vec3(CX + 220, 0, CZ + 150);
+  pillar2_state.rotation = vec3(0, 0, 0);
+  pillar2_state.scale = vec3(1, 1, 1);
+  
+  mat4 pillar2_T = mat4::translate(pillar2_state.translation.x(), pillar2_state.translation.y(), pillar2_state.translation.z());
+  mat4 pillar2_Tinv = mat4::translate_inverse(pillar2_state.translation.x(), pillar2_state.translation.y(), pillar2_state.translation.z());
+  
+  auto pillar2_transform = std::make_shared<transform>(pillar2_parts, pillar2_T, pillar2_Tinv);
+  pillar2_transform->name = pillar2_name;
+  
+  world.add(pillar2_transform);
+  object_states[pillar2_name] = pillar2_state;
+  object_transforms[pillar2_name] = pillar2_transform;
 
   // Pilar 3 - Mais ao fundo, parcialmente destruído (menor e mais inclinado)
   auto pillar3 =
       std::make_shared<cylinder>(point3(0, 0, 0), vec3(0, 1, 0), 12, 80,
                                  mat_ancient_stone, "Ruined Pillar 3");
-  mat4 pillar3_shear = mat4::shear(0.25, 0.30, 0, 0, 0,
-                                   0); // Cisalhamento diagonal - MUITO EVIDENTE
+  mat4 pillar3_shear = mat4::shear(0.25, 0.30, 0, 0, 0, 0);
   mat4 pillar3_shear_inv = mat4::shear_inverse(0.25, 0.30, 0, 0, 0, 0);
   mat4 pillar3_T = mat4::translate(CX - 180, 0, CZ + 280);
   mat4 pillar3_Tinv = mat4::translate_inverse(CX - 180, 0, CZ + 280);
@@ -655,33 +1033,12 @@ void create_scene() {
   auto pillar4 =
       std::make_shared<cylinder>(point3(0, 0, 0), vec3(0, 1, 0), 14, 100,
                                  mat_ancient_stone, "Ruined Pillar 4");
-  mat4 pillar4_shear =
-      mat4::shear(-0.45, 0.15, 0, 0, 0, 0); // QUASE CAINDO - muito evidente
+  mat4 pillar4_shear = mat4::shear(-0.45, 0.15, 0, 0, 0, 0);
   mat4 pillar4_shear_inv = mat4::shear_inverse(-0.45, 0.15, 0, 0, 0, 0);
   mat4 pillar4_T = mat4::translate(CX + 200, 0, CZ + 300);
   mat4 pillar4_Tinv = mat4::translate_inverse(CX + 200, 0, CZ + 300);
   world.add(std::make_shared<transform>(pillar4, pillar4_T * pillar4_shear,
                                         pillar4_shear_inv * pillar4_Tinv));
-
-  // Capitéis (topos decorativos dos pilares - esferas achatadas)
-  // Capitel do Pilar 1
-  auto cap1 = std::make_shared<sphere>(point3(0, 0, 0), 20, mat_ancient_stone,
-                                       "Pillar 1 Capital");
-  mat4 cap1_S = mat4::scale(1.3, 0.4, 1.3);
-  mat4 cap1_Sinv = mat4::scale_inverse(1.3, 0.4, 1.3);
-  mat4 cap1_T =
-      mat4::translate(CX - 220 + 14.4, 120, CZ + 150); // Offset pelo shear
-  mat4 cap1_Tinv = mat4::translate_inverse(CX - 220 + 14.4, 120, CZ + 150);
-  world.add(std::make_shared<transform>(cap1, cap1_T * cap1_S,
-                                        cap1_Sinv * cap1_Tinv));
-
-  // Capitel do Pilar 2
-  auto cap2 = std::make_shared<sphere>(point3(0, 0, 0), 20, mat_ancient_stone,
-                                       "Pillar 2 Capital");
-  mat4 cap2_T = mat4::translate(CX + 220 - 13, 130, CZ + 150 + 6.5);
-  mat4 cap2_Tinv = mat4::translate_inverse(CX + 220 - 13, 130, CZ + 150 + 6.5);
-  world.add(std::make_shared<transform>(cap2, cap2_T * cap1_S,
-                                        cap1_Sinv * cap2_Tinv));
 
   // ===== TOCHA PRÓXIMA À CLIFF ROCK (Uso criativo de CONE + vec4) =====
   // Tocha estilo medieval: poste vertical fincado no chão com chama no topo
@@ -710,66 +1067,48 @@ void create_scene() {
       4.0,
       "Torch Pole");
 
-  // POSIÇÃO DA TOCHA usando vec4
-  // Câmera em (1050, 200, 750), olhando para (900, 100, 900)
-  // Tocha posicionada ENTRE a câmera e o centro, à esquerda da pedra
-  // Esta posição está no campo de visão da câmera
+  // ===== TOCHA MEDIEVAL (AGRUPADA E TRANSFORMÁVEL) =====
+  // Posição inicial usando vec4
   vec4 torch_base_pos = vec4(CX - 100, 0, CZ - 80, 1.0);  // (800, 0, 820)
-  point3 base_pos = torch_base_pos.to_point3();
-
-  // Altura do poste
   const double POLE_HEIGHT = 120.0;
-
-  // 1. POSTE DE MADEIRA (cilindro vertical fincado no chão)
-  world.add(std::make_shared<cylinder>(
-      base_pos,
-      vec3(0, 1, 0),        // Vertical
-      4,                    // Raio do poste
-      POLE_HEIGHT,          // Altura do poste
-      mat_torch_pole,
-      "Torch Pole"));
-
-  // Posição do topo do poste usando vec4
-  vec4 pole_top_vec4 = torch_base_pos + vec4(0, POLE_HEIGHT, 0, 0);
-  point3 pole_top = pole_top_vec4.to_point3();
-
-  // 2. CHAMA EXTERNA (CONE laranja) - no topo do poste
+  
+  // 1. Criar grupo para os componentes da tocha
+  // Coordenadas RELATIVAS ao centro da base (pivô no chão)
+  auto torch_parts = std::make_shared<hittable_list>();
+  
+  // 1.1 Poste de madeira (cilindro vertical)
+  torch_parts->add(std::make_shared<cylinder>(
+      point3(0, 0, 0), vec3(0, 1, 0), 4, POLE_HEIGHT, mat_torch_pole, "Torch Pole"));
+  
+  // 1.2 Chama externa (cone laranja no topo)
   auto flame_outer = cone::from_base(
-      point3(0, 0, 0),
-      vec3(0, 1, 0),        // Aponta para cima
-      12,                   // Raio base
-      35,                   // Altura
-      mat_torch_flame,
-      "Torch Flame Outer");
-
-  mat4 fo_T = mat4::translate(pole_top.x(), pole_top.y(), pole_top.z());
-  mat4 fo_Tinv = mat4::translate_inverse(pole_top.x(), pole_top.y(), pole_top.z());
-  world.add(std::make_shared<transform>(
-      std::make_shared<cone>(flame_outer), fo_T, fo_Tinv));
-
-  // 3. NÚCLEO DA CHAMA (CONE amarelo menor) - ligeiramente acima
+      point3(0, 0, 0), vec3(0, 1, 0), 12, 35, mat_torch_flame, "Torch Flame Outer");
+  torch_parts->add(translate_object(std::make_shared<cone>(flame_outer), 0, POLE_HEIGHT, 0));
+  
+  // 1.3 Núcleo da chama (cone amarelo menor)
   auto flame_inner = cone::from_base(
-      point3(0, 0, 0),
-      vec3(0, 1, 0),
-      6,                    // Raio menor
-      25,                   // Altura menor
-      mat_torch_core,
-      "Torch Flame Core");
-
-  mat4 fi_T = mat4::translate(pole_top.x(), pole_top.y() + 5, pole_top.z());
-  mat4 fi_Tinv = mat4::translate_inverse(pole_top.x(), pole_top.y() + 5, pole_top.z());
-  world.add(std::make_shared<transform>(
-      std::make_shared<cone>(flame_inner), fi_T, fi_Tinv));
-
-  // 4. FONTE DE LUZ PONTUAL (ilumina a área)
-  vec4 light_pos_vec4 = pole_top_vec4 + vec4(0, 25, 0, 0);
-  point3 torch_light_pos = light_pos_vec4.to_point3();
-  lights.push_back(std::make_shared<point_light>(
-      torch_light_pos,
-      color(1.0, 0.6, 0.2),  // Luz laranja quente
-      0.8,                   // Intensidade
-      0.001,                 // Atenuação linear
-      0.00004));             // Atenuação quadrática
+      point3(0, 0, 0), vec3(0, 1, 0), 6, 25, mat_torch_core, "Torch Flame Core");
+  torch_parts->add(translate_object(std::make_shared<cone>(flame_inner), 0, POLE_HEIGHT + 5, 0));
+  
+  // 2. CRIAR TRANSFORM MESTRE DA TOCHA
+  std::string torch_name = "Tocha Medieval";
+  TransformState torch_state;
+  torch_state.translation = vec3(torch_base_pos.x(), torch_base_pos.y(), torch_base_pos.z());
+  torch_state.rotation = vec3(0, 0, 0);
+  torch_state.scale = vec3(1, 1, 1);
+  
+  mat4 torch_T = mat4::translate(torch_state.translation.x(), torch_state.translation.y(), torch_state.translation.z());
+  mat4 torch_Tinv = mat4::translate_inverse(torch_state.translation.x(), torch_state.translation.y(), torch_state.translation.z());
+  
+  auto torch_transform = std::make_shared<transform>(torch_parts, torch_T, torch_Tinv);
+  torch_transform->name = torch_name;
+  
+  world.add(torch_transform);
+  object_states[torch_name] = torch_state;
+  object_transforms[torch_name] = torch_transform;
+  
+  // 4. FONTE DE LUZ DA TOCHA
+  // (Removido daqui e movido para setup_lighting para ser gerenciado dinamicamente)
 
   // ===== 2. REFLEXOS NA ÁGUA COM ESPELHO (Requisito 1.4.5 - Bônus +0.5) =====
   // Reflexos no Stream Lake (lago ao redor da pedra central)
@@ -806,39 +1145,8 @@ void create_scene() {
       reflect_object(waterfall_splash, point3(WX, 2.0, WZ), vec3(0, 1, 0));
   world.add(splash_mirrored);
 
-  // ===== 3. GEMA COM ROTAÇÃO QUATERNION NA GUARDA DA ESPADA (Requisito 1.4.2)
-  // ===== Material safira azul para a gema
-  auto mat_sapphire =
-      std::make_shared<material>(color(0.1, 0.2, 0.8), // Azul safira
-                                 0.2,                  // ka
-                                 0.95,                 // ks - muito brilhante
-                                 256.0,                // shininess muito alto
-                                 "Sapphire Gem");
-
-  // Gema azul com rotação em eixo arbitrário usando quatérnios
-  // Posicionada na guarda da espada principal (lado oposto à esfera dourada)
-  auto quaternion_sapphire = std::make_shared<sphere>(
-      point3(0, 0, 0), 6, mat_sapphire, "Quaternion Sapphire Gem");
-  // Rotação de 30 graus em torno do eixo diagonal (1, 1, 1) - eixo arbitrário
-  auto rotated_sapphire = rotate_axis_object(quaternion_sapphire, vec3(1, 1, 1),
-                                             degrees_to_radians(30));
-  // Posicionar na guarda da espada principal (lado esquerdo)
-  auto positioned_sapphire =
-      translate_object(rotated_sapphire, CX - 30, GUARD_Y, CZ);
-  world.add(positioned_sapphire);
-
-  // Segunda gema com quaternion no centro da guarda (mais visível)
-  auto quaternion_emerald = std::make_shared<sphere>(
-      point3(0, 0, 0), 4,
-      std::make_shared<material>(color(0.1, 0.7, 0.2), 0.2, 0.9, 200.0,
-                                 "Emerald Gem"),
-      "Quaternion Emerald");
-  // Rotação de 60 graus em torno do eixo (0, 1, 1) - outro eixo arbitrário
-  auto rotated_emerald = rotate_axis_object(quaternion_emerald, vec3(0, 1, 1),
-                                            degrees_to_radians(60));
-  auto positioned_emerald =
-      translate_object(rotated_emerald, CX, GUARD_Y + 5, CZ);
-  world.add(positioned_emerald);
+  // ===== 3. GEMAS COM QUATERNION MOVIDAS PARA GRUPO DA ESPADA =====
+  // (Ver sword_parts na seção da espada acima)
 
   // ===== ILUMINAÇÃO DRAMÁTICA (NOITE/PALCO) =====
 
@@ -1104,11 +1412,20 @@ void keyboard(unsigned char key, int x, int y) {
     std::cout << "WASD - Mover camera (frente/tras/esq/dir)\n";
     std::cout << "R/F - Subir/Descer camera\n";
     std::cout << "Setas - Rotacionar camera\n";
+    std::cout << "G - Abrir/Fechar GUI\n";
     std::cout << "1 - Perspectiva | O - Ortografica | P - Obliqua\n";
     std::cout << "+/- - Zoom In/Out\n";
     std::cout << "Click - Pick de objeto\n";
+    std::cout << "N - Alternar Dia/Noite\n";
     std::cout << "Q/ESC - Sair\n";
     std::cout << "=================\n\n";
+    break;
+
+  case 'g':
+  case 'G':
+    // Abrir/Fechar GUI
+    GUIManager::toggle();
+    glutPostRedisplay();
     break;
 
   case 'c':
@@ -1120,6 +1437,12 @@ void keyboard(unsigned char key, int x, int y) {
     need_redraw = true;
     changed = true;
     std::cout << "Camera resetada\n";
+    break;
+
+  case 'n':
+  case 'N':
+    // Alternar Dia/Noite
+    toggle_day_night(!is_night_mode);
     break;
   }
 
@@ -1219,7 +1542,62 @@ int main(int argc, char **argv) {
   glClearColor(0.0f, 0.0f, 0.0f, 1.0f);
   glPixelStorei(GL_UNPACK_ALIGNMENT, 1);
 
-  // Registrar callbacks
+  // Inicializar GUI com ponteiros para variáveis de câmera e brilho
+  // Inicializar GUI com ponteiros
+  GUIManager::init(
+      &cam_eye[0], &cam_at[0], &cam_up[0], &current_projection, &need_redraw, &blade_shine_enabled, &is_night_mode, &selected_transform_name
+  );
+  
+  // Configurar callbacks da GUI
+  GUIManager::setCallbacks(
+      // Callback quando câmera muda
+      []() {
+          setup_camera();
+          glutPostRedisplay();
+      },
+      // Callback para re-renderizar
+      []() {
+          need_redraw = true;
+          glutPostRedisplay();
+      },
+      // Callback para toggle do brilho da lâmina
+      [](bool increase) {
+          toggle_blade_shine(increase);
+          glutPostRedisplay();
+      },
+      // Callback para toggle Dia/Noite
+      [](bool set_night) {
+          toggle_day_night(set_night);
+          glutPostRedisplay();
+      },
+      // GET Transform State
+      [](const std::string& name, double* t, double* r, double* s) -> bool {
+          if (object_states.find(name) == object_states.end()) return false;
+          TransformState& state = object_states[name];
+          t[0] = state.translation.x(); t[1] = state.translation.y(); t[2] = state.translation.z();
+          r[0] = state.rotation.x(); r[1] = state.rotation.y(); r[2] = state.rotation.z();
+          s[0] = state.scale.x(); s[1] = state.scale.y(); s[2] = state.scale.z();
+          return true;
+      },
+      // SET Transform State
+      [](const std::string& name, const double* t, const double* r, const double* s) {
+          if (object_states.find(name) == object_states.end()) return;
+          TransformState& state = object_states[name];
+          state.translation = vec3(t[0], t[1], t[2]);
+          state.rotation = vec3(r[0], r[1], r[2]);
+          state.scale = vec3(s[0], s[1], s[2]);
+          update_object_transform(name);
+          
+          // Se for a espada e o brilho estiver ligado, atualizar a luz!
+          if (name == "Espada Completa" && blade_shine_enabled) {
+               update_sword_light();
+          }
+          
+          glutPostRedisplay();
+      }
+  );
+
+  // Registrar callbacks GLUT
   glutDisplayFunc(display);
   glutKeyboardFunc(keyboard);
   glutSpecialFunc(special_keys);
@@ -1230,6 +1608,7 @@ int main(int argc, char **argv) {
   std::cout << "WASD - Mover camera\n";
   std::cout << "R/F - Subir/Descer\n";
   std::cout << "Setas - Rotacionar visao\n";
+  std::cout << "G - Abrir/Fechar GUI\n";
   std::cout << "C - Reset camera\n";
   std::cout << "1/O/P - Perspectiva/Ortografica/Obliqua\n";
   std::cout << "+/- - Zoom\n";
