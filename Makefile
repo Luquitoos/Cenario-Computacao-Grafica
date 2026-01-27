@@ -3,11 +3,11 @@
 # Compilador
 CXX = g++
 
-# Flags de compilação
-CXXFLAGS = -std=c++17 -Wall -O2 -I./include
+# Flags de compilação (com OpenMP para paralelização)
+CXXFLAGS = -std=c++17 -Wall -O2 -I./include -fopenmp
 
-# Flags do linker para FreeGLUT (Windows)
-LDFLAGS = -lfreeglut -lopengl32 -lglu32
+# Flags do linker para FreeGLUT (Windows) + OpenMP
+LDFLAGS = -lfreeglut -lopengl32 -lglu32 -fopenmp
 
 # Diretórios
 SRC_DIR = src

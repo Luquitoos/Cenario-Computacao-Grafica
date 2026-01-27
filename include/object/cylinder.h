@@ -124,6 +124,23 @@ private:
 
     return t;
   }
+
+public:
+  bool bounding_box(aabb& output_box) const override {
+    // Calcula AABB conservadora para cilindro
+    point3 top_center = base_center + height * axis;
+    
+    double min_x = std::fmin(base_center.x() - radius, top_center.x() - radius);
+    double min_y = std::fmin(base_center.y() - radius, top_center.y() - radius);
+    double min_z = std::fmin(base_center.z() - radius, top_center.z() - radius);
+    
+    double max_x = std::fmax(base_center.x() + radius, top_center.x() + radius);
+    double max_y = std::fmax(base_center.y() + radius, top_center.y() + radius);
+    double max_z = std::fmax(base_center.z() + radius, top_center.z() + radius);
+    
+    output_box = aabb(point3(min_x, min_y, min_z), point3(max_x, max_y, max_z));
+    return true;
+  }
 };
 
 #endif

@@ -84,6 +84,12 @@ private:
     faces.add(
         std::make_shared<triangle>(v[4], v[1], v[0], mat, name + "_face"));
   }
+
+public:
+  bool bounding_box(aabb& output_box) const override {
+    output_box = aabb(min_corner, max_corner);
+    return true;
+  }
 };
 
 class blade_mesh : public hittable {
@@ -178,6 +184,20 @@ public:
   }
 
   std::string get_name() const override { return name; }
+  
+  bool bounding_box(aabb& output_box) const override {
+    // Calcula bounding box de todas as faces
+    aabb temp_box;
+    bool first = true;
+    for (const auto& obj : faces.objects) {
+      aabb obj_box;
+      if (obj->bounding_box(obj_box)) {
+        output_box = first ? obj_box : aabb::surrounding_box(output_box, obj_box);
+        first = false;
+      }
+    }
+    return !first;
+  }
 };
 
 #endif

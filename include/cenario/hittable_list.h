@@ -46,6 +46,22 @@ public:
   }
 
   std::string get_name() const override { return "Scene"; }
+  
+  bool bounding_box(aabb& output_box) const override {
+    if (objects.empty()) return false;
+    
+    aabb temp_box;
+    bool first = true;
+    
+    for (const auto& obj : objects) {
+      aabb obj_box;
+      if (obj->bounding_box(obj_box)) {
+        output_box = first ? obj_box : aabb::surrounding_box(output_box, obj_box);
+        first = false;
+      }
+    }
+    return !first;
+  }
 };
 
 #endif

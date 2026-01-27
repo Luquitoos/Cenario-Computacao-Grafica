@@ -70,6 +70,22 @@ public:
   }
 
   std::string get_name() const override { return name; }
+  
+  bool bounding_box(aabb& output_box) const override {
+    point3 small(
+      std::fmin(std::fmin(v0.x(), v1.x()), v2.x()),
+      std::fmin(std::fmin(v0.y(), v1.y()), v2.y()),
+      std::fmin(std::fmin(v0.z(), v1.z()), v2.z())
+    );
+    point3 big(
+      std::fmax(std::fmax(v0.x(), v1.x()), v2.x()),
+      std::fmax(std::fmax(v0.y(), v1.y()), v2.y()),
+      std::fmax(std::fmax(v0.z(), v1.z()), v2.z())
+    );
+    // Pequena margem para triângulos alinhados com eixos
+    output_box = aabb(small - vec3(0.0001, 0.0001, 0.0001), big + vec3(0.0001, 0.0001, 0.0001));
+    return true;
+  }
 };
 
 #endif

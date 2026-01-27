@@ -35,3 +35,19 @@ double cam_speed = 30.0;
 map<string, TransformState> object_states;
 map<string, shared_ptr<class transform>> object_transforms;
 string selected_transform_name = "";
+
+// === OTIMIZAÇÃO: Resolução Adaptativa ===
+const int PREVIEW_WIDTH = 200;
+const int PREVIEW_HEIGHT = 200;
+unsigned char *PreviewBuffer = nullptr;
+bool is_interacting = false;
+bool use_preview = false;
+bool frame_cached = false;
+
+// === OTIMIZAÇÃO: BVH Scene ===
+bvh_scene scene_bvh;
+
+void build_scene_bvh() {
+  scene_bvh.build(world.objects);
+}
+

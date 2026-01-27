@@ -163,9 +163,30 @@ void perform_pick(int mouse_x, int mouse_y) {
   cout << "==========================\n";
 }
 
+// === Timer callback para refinamento após parar de interagir ===
+static int refine_timer_id = 0;
+
+void refine_timer_callback(int value) {
+  if (value == refine_timer_id && is_interacting) {
+    // Usuario parou de interagir, renderizar em alta resolução
+    is_interacting = false;
+    use_preview = false;
+    need_redraw = true;
+    glutPostRedisplay();
+  }
+}
+
 void display() {
   if (need_redraw) {
-    render();
+    if (use_preview) {
+      // Modo preview: renderiza rápido em baixa resolução
+      render_preview();
+      upscale_preview();
+      need_redraw = false;
+    } else {
+      // Modo normal: renderiza em alta resolução
+      render();
+    }
   }
 
   glClear(GL_COLOR_BUFFER_BIT);
@@ -188,6 +209,12 @@ void display() {
     info += "Obliqua";
     break;
   }
+  
+  // Mostrar indicador de modo preview
+  if (use_preview || is_interacting) {
+    info += " [PREVIEW]";
+  }
+  
   for (char c : info) {
     glutBitmapCharacter(GLUT_BITMAP_HELVETICA_18, c);
   }
@@ -225,8 +252,12 @@ void keyboard(unsigned char key, int x, int y) {
     cam_eye = cam_eye + forward * cam_speed;
     cam_at = cam_at + forward * cam_speed;
     setup_camera();
+    use_preview = true;
+    is_interacting = true;
     need_redraw = true;
     changed = true;
+    refine_timer_id++;
+    glutTimerFunc(400, refine_timer_callback, refine_timer_id);
     break;
 
   case 's':
@@ -234,8 +265,12 @@ void keyboard(unsigned char key, int x, int y) {
     cam_eye = cam_eye - forward * cam_speed;
     cam_at = cam_at - forward * cam_speed;
     setup_camera();
+    use_preview = true;
+    is_interacting = true;
     need_redraw = true;
     changed = true;
+    refine_timer_id++;
+    glutTimerFunc(400, refine_timer_callback, refine_timer_id);
     break;
 
   case 'a':
@@ -243,8 +278,12 @@ void keyboard(unsigned char key, int x, int y) {
     cam_eye = cam_eye - right * cam_speed;
     cam_at = cam_at - right * cam_speed;
     setup_camera();
+    use_preview = true;
+    is_interacting = true;
     need_redraw = true;
     changed = true;
+    refine_timer_id++;
+    glutTimerFunc(400, refine_timer_callback, refine_timer_id);
     break;
 
   case 'd':
@@ -252,8 +291,12 @@ void keyboard(unsigned char key, int x, int y) {
     cam_eye = cam_eye + right * cam_speed;
     cam_at = cam_at + right * cam_speed;
     setup_camera();
+    use_preview = true;
+    is_interacting = true;
     need_redraw = true;
     changed = true;
+    refine_timer_id++;
+    glutTimerFunc(400, refine_timer_callback, refine_timer_id);
     break;
 
   case 'r':
@@ -261,8 +304,12 @@ void keyboard(unsigned char key, int x, int y) {
     cam_eye[1] += cam_speed;
     cam_at[1] += cam_speed;
     setup_camera();
+    use_preview = true;
+    is_interacting = true;
     need_redraw = true;
     changed = true;
+    refine_timer_id++;
+    glutTimerFunc(400, refine_timer_callback, refine_timer_id);
     break;
 
   case 'f':
@@ -270,8 +317,12 @@ void keyboard(unsigned char key, int x, int y) {
     cam_eye[1] -= cam_speed;
     cam_at[1] -= cam_speed;
     setup_camera();
+    use_preview = true;
+    is_interacting = true;
     need_redraw = true;
     changed = true;
+    refine_timer_id++;
+    glutTimerFunc(400, refine_timer_callback, refine_timer_id);
     break;
 
   case '1':
@@ -369,29 +420,45 @@ void special_keys(int key, int x, int y) {
   case GLUT_KEY_UP:
     cam_at = cam_at + up * cam_speed;
     setup_camera();
+    use_preview = true;
+    is_interacting = true;
     need_redraw = true;
     changed = true;
+    refine_timer_id++;
+    glutTimerFunc(400, refine_timer_callback, refine_timer_id);
     break;
 
   case GLUT_KEY_DOWN:
     cam_at = cam_at - up * cam_speed;
     setup_camera();
+    use_preview = true;
+    is_interacting = true;
     need_redraw = true;
     changed = true;
+    refine_timer_id++;
+    glutTimerFunc(400, refine_timer_callback, refine_timer_id);
     break;
 
   case GLUT_KEY_LEFT:
     cam_at = cam_at - right * cam_speed;
     setup_camera();
+    use_preview = true;
+    is_interacting = true;
     need_redraw = true;
     changed = true;
+    refine_timer_id++;
+    glutTimerFunc(400, refine_timer_callback, refine_timer_id);
     break;
 
   case GLUT_KEY_RIGHT:
     cam_at = cam_at + right * cam_speed;
     setup_camera();
+    use_preview = true;
+    is_interacting = true;
     need_redraw = true;
     changed = true;
+    refine_timer_id++;
+    glutTimerFunc(400, refine_timer_callback, refine_timer_id);
     break;
   }
 

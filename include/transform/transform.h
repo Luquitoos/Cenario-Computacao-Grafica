@@ -49,6 +49,42 @@ public:
   }
 
   std::string get_name() const override { return name; }
+  
+  bool bounding_box(aabb& output_box) const override {
+    aabb child_box;
+    if (!object->bounding_box(child_box)) return false;
+    
+    // Transforma os 8 cantos da bounding box
+    point3 min_corner = child_box.minimum;
+    point3 max_corner = child_box.maximum;
+    
+    point3 new_min(1e30, 1e30, 1e30);
+    point3 new_max(-1e30, -1e30, -1e30);
+    
+    for (int i = 0; i < 2; i++) {
+      for (int j = 0; j < 2; j++) {
+        for (int k = 0; k < 2; k++) {
+          double x = i ? max_corner.x() : min_corner.x();
+          double y = j ? max_corner.y() : min_corner.y();
+          double z = k ? max_corner.z() : min_corner.z();
+          
+          vec4 corner(x, y, z, 1.0);
+          vec4 transformed = forward * corner;
+          point3 p = transformed.to_point3();
+          
+          new_min = point3(std::fmin(new_min.x(), p.x()),
+                          std::fmin(new_min.y(), p.y()),
+                          std::fmin(new_min.z(), p.z()));
+          new_max = point3(std::fmax(new_max.x(), p.x()),
+                          std::fmax(new_max.y(), p.y()),
+                          std::fmax(new_max.z(), p.z()));
+        }
+      }
+    }
+    
+    output_box = aabb(new_min, new_max);
+    return true;
+  }
 };
 
 inline std::shared_ptr<transform>
