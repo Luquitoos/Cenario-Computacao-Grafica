@@ -46,6 +46,8 @@ function<void()> GUIManager::on_camera_change = nullptr;
 function<void()> GUIManager::on_render_request = nullptr;
 function<void(bool)> GUIManager::on_blade_shine_toggle = nullptr;
 function<void(bool)> GUIManager::on_day_night_toggle = nullptr;
+function<void(int)> GUIManager::on_vanishing_point_change = nullptr;
+int *GUIManager::vanishing_points_preset_ptr = nullptr;
 function<bool(const string &, double *, double *, double *)>
     GUIManager::get_transform_state = nullptr;
 function<void(const string &, const double *, const double *, const double *)>
@@ -53,7 +55,7 @@ function<void(const string &, const double *, const double *, const double *)>
 
 void GUIManager::init(double *eye, double *at, double *up, int *proj_type,
                       bool *redraw, bool *blade_shine, bool *is_night,
-                      string *sel_trans_name) {
+                      string *sel_trans_name, int *vp_preset) {
   gui_visible = false;
   gui_x = 10;
   gui_y = 10;
@@ -66,6 +68,7 @@ void GUIManager::init(double *eye, double *at, double *up, int *proj_type,
   blade_shine_ptr = blade_shine;
   is_night_mode_ptr = is_night;
   selected_transform_name_ptr = sel_trans_name;
+  vanishing_points_preset_ptr = vp_preset;
 
   has_pending_changes = false;
   pending_values_loaded = false;
@@ -77,6 +80,7 @@ void GUIManager::init(double *eye, double *at, double *up, int *proj_type,
 void GUIManager::setCallbacks(
     function<void()> cam_change, function<void()> render_req,
     function<void(bool)> blade_toggle, function<void(bool)> day_night_toggle,
+    function<void(int)> vp_change,
     function<bool(const string &, double *, double *, double *)> get_trans,
     function<void(const string &, const double *, const double *,
                   const double *)>
@@ -85,6 +89,7 @@ void GUIManager::setCallbacks(
   on_render_request = render_req;
   on_blade_shine_toggle = blade_toggle;
   on_day_night_toggle = day_night_toggle;
+  on_vanishing_point_change = vp_change;
   get_transform_state = get_trans;
   set_transform_state = set_trans;
 }

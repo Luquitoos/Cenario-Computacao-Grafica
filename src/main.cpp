@@ -40,7 +40,7 @@ int main(int argc, char **argv) {
 
   GUIManager::init(&cam_eye[0], &cam_at[0], &cam_up[0], &current_projection,
                    &need_redraw, &blade_shine_enabled, &is_night_mode,
-                   &selected_transform_name);
+                   &selected_transform_name, &vanishing_points_preset);
 
   GUIManager::setCallbacks(
 
@@ -57,6 +57,12 @@ int main(int argc, char **argv) {
       [](bool state) { toggle_blade_shine(state); },
 
       [](bool is_night) { toggle_day_night(is_night); },
+
+      [](int preset) {
+        apply_vanishing_point_preset(preset);
+        setup_camera();
+        glutPostRedisplay();
+      },
 
       [](const string &name, double *t, double *r, double *s) -> bool {
         if (object_states.find(name) != object_states.end()) {

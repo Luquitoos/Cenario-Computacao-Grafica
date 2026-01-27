@@ -223,6 +223,48 @@ void toggle_day_night(bool set_to_night) {
   need_redraw = true;
 }
 
+void apply_vanishing_point_preset(int preset) {
+
+  const double SWORD_X = 900.0;
+  const double SWORD_Y = 150.0;
+  const double SWORD_Z = 900.0;
+  point3 sword_center(SWORD_X, SWORD_Y, SWORD_Z);
+
+  vanishing_points_preset = preset;
+
+  switch (preset) {
+  case 0:
+    cout << "[Perspectiva] Modo LIVRE\n";
+    break;
+
+  case 1:
+    cam_eye = point3(SWORD_X, SWORD_Y + 40, SWORD_Z - 130);
+    cam_at = sword_center;
+    cam_up = vec3(0, 1, 0);
+    cout << "[Perspectiva] 1 PONTO DE FUGA - Vista frontal\n";
+    break;
+
+  case 2:
+    cam_eye = point3(SWORD_X + 60, SWORD_Y + 220, SWORD_Z - 80);
+    cam_at = sword_center;
+    cam_up = vec3(0, 1, 0);
+    cout << "[Perspectiva] 2 PONTOS DE FUGA - Vista de cima\n";
+    break;
+
+  case 3:
+    cam_eye = point3(SWORD_X + 50, SWORD_Y - 60, SWORD_Z - 90);
+    cam_at = point3(SWORD_X, SWORD_Y + 80, SWORD_Z);
+    cam_up = vec3(0, 1, 0);
+    cout << "[Perspectiva] 3 PONTOS DE FUGA - Vista de baixo\n";
+    break;
+  }
+
+  if (preset > 0) {
+    setup_camera();
+  }
+  need_redraw = true;
+}
+
 void setup_camera() {
   double window_size = 200.0;
 

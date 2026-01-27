@@ -2,8 +2,8 @@
 
 using namespace std;
 
-const int IMAGE_WIDTH = 800;
-const int IMAGE_HEIGHT = 800;
+const int IMAGE_WIDTH = 400;
+const int IMAGE_HEIGHT = 400;
 
 unsigned char *PixelBuffer = nullptr;
 
@@ -14,6 +14,7 @@ vector<shared_ptr<light>> lights;
 
 int current_projection = 0;
 int vanishing_points = 3;
+int vanishing_points_preset = 0;
 bool need_redraw = true;
 string picked_object = "";
 

@@ -336,7 +336,7 @@ void GUIManager::drawProjectionTab() {
   int btn_h = 30;
   int btn_spacing = 35;
 
-  drawText(gui_x + 10, content_y, "Selecione a projecao:", 0.8f, 0.8f, 0.8f);
+  drawText(gui_x + 10, content_y, "=== Tipo de Projecao ===", 0.5f, 0.8f, 1.0f);
   content_y += 25;
 
   int current_proj = projection_type_ptr ? *projection_type_ptr : 0;
@@ -351,10 +351,73 @@ void GUIManager::drawProjectionTab() {
 
   drawButton(gui_x + 10, content_y, gui_width - 20, btn_h, "Obliqua",
              current_proj == 2);
-  content_y += btn_spacing + 20;
+  content_y += btn_spacing + 15;
 
-  drawText(gui_x + 10, content_y, "Teclas: 1=Persp, O=Orto, P=Obliq", 0.6f,
-           0.6f, 0.6f);
+  if (current_proj == 0) {
+    drawText(gui_x + 10, content_y, "=== Pontos de Fuga ===", 0.5f, 0.8f, 1.0f);
+    content_y += 25;
+
+    int vp_preset =
+        vanishing_points_preset_ptr ? *vanishing_points_preset_ptr : 0;
+
+    int btn_w = (gui_width - 30) / 2;
+
+    drawButton(gui_x + 10, content_y, btn_w, 28, "Livre", vp_preset == 0);
+    drawButton(gui_x + 15 + btn_w, content_y, btn_w, 28, "1 Ponto",
+               vp_preset == 1);
+    content_y += 33;
+
+    drawButton(gui_x + 10, content_y, btn_w, 28, "2 Pontos", vp_preset == 2);
+    drawButton(gui_x + 15 + btn_w, content_y, btn_w, 28, "3 Pontos",
+               vp_preset == 3);
+    content_y += 40;
+
+    drawText(gui_x + 10, content_y, "Modo Ativo:", 0.7f, 0.7f, 0.7f);
+    content_y += 18;
+
+    switch (vp_preset) {
+    case 0:
+      drawText(gui_x + 10, content_y, "LIVRE - Camera manual", 1.0f, 1.0f,
+               0.5f);
+      content_y += 18;
+      drawText(gui_x + 10, content_y, "Use a aba Camera para", 0.6f, 0.6f,
+               0.6f);
+      content_y += 15;
+      drawText(gui_x + 10, content_y, "posicionar livremente.", 0.6f, 0.6f,
+               0.6f);
+      break;
+    case 1:
+      drawText(gui_x + 10, content_y, "1 PONTO DE FUGA", 0.3f, 1.0f, 0.3f);
+      content_y += 18;
+      drawText(gui_x + 10, content_y, "Camera frontal.", 0.6f, 0.6f, 0.6f);
+      content_y += 15;
+      drawText(gui_x + 10, content_y, "Apenas eixo Z converge.", 0.6f, 0.6f,
+               0.6f);
+      break;
+    case 2:
+      drawText(gui_x + 10, content_y, "2 PONTOS DE FUGA", 0.3f, 0.8f, 1.0f);
+      content_y += 18;
+      drawText(gui_x + 10, content_y, "Camera em diagonal.", 0.6f, 0.6f, 0.6f);
+      content_y += 15;
+      drawText(gui_x + 10, content_y, "Eixos X e Z convergem.", 0.6f, 0.6f,
+               0.6f);
+      break;
+    case 3:
+      drawText(gui_x + 10, content_y, "3 PONTOS DE FUGA", 1.0f, 0.5f, 1.0f);
+      content_y += 18;
+      drawText(gui_x + 10, content_y, "Camera elevada + diagonal.", 0.6f, 0.6f,
+               0.6f);
+      content_y += 15;
+      drawText(gui_x + 10, content_y, "Todos eixos convergem.", 0.6f, 0.6f,
+               0.6f);
+      break;
+    }
+  } else {
+    drawText(gui_x + 10, content_y, "Pontos de fuga:", 0.5f, 0.5f, 0.5f);
+    content_y += 18;
+    drawText(gui_x + 10, content_y, "(Apenas em Perspectiva)", 0.4f, 0.4f,
+             0.4f);
+  }
 }
 
 void GUIManager::draw() {

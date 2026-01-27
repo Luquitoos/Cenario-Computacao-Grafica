@@ -261,6 +261,41 @@ bool GUIManager::handleProjectionTabClick(int local_x, int local_y) {
       *need_redraw_ptr = true;
     return true;
   }
+  start_y += btn_spacing + 15;
+
+  int current_proj = *projection_type_ptr;
+  if (current_proj == 0) {
+    start_y += 25;
+
+    int btn_w = (gui_width - 30) / 2;
+
+    if (local_y >= start_y && local_y <= start_y + 28) {
+      if (local_x >= 10 && local_x <= 10 + btn_w) {
+        if (on_vanishing_point_change)
+          on_vanishing_point_change(0);
+        return true;
+      }
+      if (local_x >= 15 + btn_w && local_x <= 15 + btn_w * 2) {
+        if (on_vanishing_point_change)
+          on_vanishing_point_change(1);
+        return true;
+      }
+    }
+    start_y += 33;
+
+    if (local_y >= start_y && local_y <= start_y + 28) {
+      if (local_x >= 10 && local_x <= 10 + btn_w) {
+        if (on_vanishing_point_change)
+          on_vanishing_point_change(2);
+        return true;
+      }
+      if (local_x >= 15 + btn_w && local_x <= 15 + btn_w * 2) {
+        if (on_vanishing_point_change)
+          on_vanishing_point_change(3);
+        return true;
+      }
+    }
+  }
 
   return false;
 }
@@ -418,7 +453,7 @@ bool GUIManager::handleMouseClick(int mouse_x, int mouse_y, int button,
       return true;
     } else if (mouse_x >= gui_x + tab_w * 2 && mouse_x < gui_x + tab_w * 3) {
       current_tab = 2;
-      gui_height = 320;
+      gui_height = 420;
       return true;
     } else if (mouse_x >= gui_x + tab_w * 3 && mouse_x < gui_x + tab_w * 4) {
       current_tab = 3;

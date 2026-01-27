@@ -11,5 +11,6 @@ void update_object_transform(const std::string &name);
 void update_sword_light();
 void toggle_blade_shine(bool increase);
 void toggle_day_night(bool set_to_night);
+void apply_vanishing_point_preset(int preset);
 
 #endif

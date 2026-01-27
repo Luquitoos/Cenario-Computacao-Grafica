@@ -24,6 +24,7 @@ extern std::vector<std::shared_ptr<light>> lights;
 
 extern int current_projection;
 extern int vanishing_points;
+extern int vanishing_points_preset;
 extern bool need_redraw;
 extern std::string picked_object;
 

@@ -4,8 +4,6 @@
 #include <GL/freeglut.h>
 #include <functional>
 #include <string>
-
-
 class hit_record;
 class material;
 
@@ -49,6 +47,9 @@ public:
   static std::function<void()> on_render_request;
   static std::function<void(bool)> on_blade_shine_toggle;
   static std::function<void(bool)> on_day_night_toggle;
+  static std::function<void(int)> on_vanishing_point_change;
+
+  static int *vanishing_points_preset_ptr;
 
   static std::function<bool(const std::string &, double *trans, double *rot,
                             double *scale)>
@@ -59,12 +60,13 @@ public:
 
   static void init(double *eye, double *at, double *up, int *proj_type,
                    bool *redraw, bool *blade_shine, bool *is_night,
-                   std::string *sel_trans_name);
+                   std::string *sel_trans_name, int *vp_preset);
 
   static void setCallbacks(
       std::function<void()> cam_change, std::function<void()> render_req,
       std::function<void(bool)> blade_toggle,
       std::function<void(bool)> day_night_toggle,
+      std::function<void(int)> vp_change,
       std::function<bool(const std::string &, double *, double *, double *)>
           get_trans,
       std::function<void(const std::string &, const double *, const double *,
