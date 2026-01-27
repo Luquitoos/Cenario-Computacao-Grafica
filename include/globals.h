@@ -21,6 +21,7 @@ extern hittable_list world;
 extern camera cam;
 extern ambient_light ambient;
 extern std::vector<std::shared_ptr<light>> lights;
+extern std::vector<std::shared_ptr<light>> firefly_lights;
 
 extern int current_projection;
 extern int vanishing_points;

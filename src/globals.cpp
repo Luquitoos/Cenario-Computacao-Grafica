@@ -2,8 +2,8 @@
 
 using namespace std;
 
-const int IMAGE_WIDTH = 400;
-const int IMAGE_HEIGHT = 400;
+const int IMAGE_WIDTH = 600;
+const int IMAGE_HEIGHT = 600;
 
 unsigned char *PixelBuffer = nullptr;
 
@@ -11,6 +11,7 @@ hittable_list world;
 camera cam;
 ambient_light ambient;
 vector<shared_ptr<light>> lights;
+vector<shared_ptr<light>> firefly_lights;
 
 int current_projection = 0;
 int vanishing_points = 3;
