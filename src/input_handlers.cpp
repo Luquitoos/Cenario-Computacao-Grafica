@@ -210,9 +210,11 @@ void display() {
     break;
   }
   
-  // Mostrar indicador de modo preview
+  // Mostrar indicador de modo preview e backend
   if (use_preview || is_interacting) {
     info += " [PREVIEW]";
+  } else {
+    info += use_gpu ? " [GPU]" : " [CPU]";
   }
   
   for (char c : info) {
@@ -368,13 +370,26 @@ void keyboard(unsigned char key, int x, int y) {
     cout << "Zoom Out\n";
     break;
 
+  case 'g':
+  case 'G':
+    if (gpu_is_available()) {
+      use_gpu = !use_gpu;
+      cout << "[GPU] Renderização via GPU: " << (use_gpu ? "ATIVADA" : "DESATIVADA") << endl;
+      need_redraw = true;
+      changed = true;
+    } else {
+      cout << "[GPU] GPU não disponível ou não inicializada.\n";
+    }
+    break;
+
   case 'h':
   case 'H':
     cout << "\n=== CONTROLES ===\n";
     cout << "WASD - Mover camera (frente/tras/esq/dir)\n";
     cout << "R/F - Subir/Descer camera\n";
     cout << "Setas - Rotacionar camera\n";
-    cout << "G - Abrir/Fechar GUI\n";
+    cout << "G - Alternar GPU/CPU\n";
+    cout << "TAB - Abrir/Fechar GUI\n";
     cout << "1 - Perspectiva | O - Ortografica | P - Obliqua\n";
     cout << "+/- - Zoom In/Out\n";
     cout << "Click - Pick de objeto\n";

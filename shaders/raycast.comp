@@ -1,0 +1,143 @@
+#version 430 core
+
+// Compute shader para ray casting em GPU
+// Cada invocação processa um pixel
+
+layout(local_size_x = 16, local_size_y = 16, local_size_z = 1) in;
+
+// Imagem de saída
+layout(rgba8, binding = 0) uniform image2D output_image;
+
+// Uniforms da câmera
+uniform vec3 cam_origin;
+uniform vec3 cam_lower_left;
+uniform vec3 cam_horizontal;
+uniform vec3 cam_vertical;
+uniform int image_width;
+uniform int image_height;
+
+// Cor do céu
+uniform vec3 sky_color_top;
+uniform vec3 sky_color_bottom;
+
+// Estrutura de esfera para teste
+struct Sphere {
+    vec3 center;
+    float radius;
+    vec3 color;
+    float padding;
+};
+
+// Buffer de esferas (SSBO)
+layout(std430, binding = 1) buffer SphereBuffer {
+    int sphere_count;
+    int padding1;
+    int padding2;
+    int padding3;
+    Sphere spheres[];
+};
+
+// Estrutura de luz
+struct Light {
+    vec3 position;
+    float intensity;
+    vec3 color;
+    int light_type; // 0 = directional, 1 = point
+};
+
+layout(std430, binding = 2) buffer LightBuffer {
+    int light_count;
+    int lpad1;
+    int lpad2;
+    int lpad3;
+    Light lights[];
+};
+
+// Teste de interseção raio-esfera
+bool hit_sphere(vec3 ray_origin, vec3 ray_dir, Sphere s, float t_min, float t_max, 
+                out float t_hit, out vec3 normal) {
+    vec3 oc = ray_origin - s.center;
+    float a = dot(ray_dir, ray_dir);
+    float half_b = dot(oc, ray_dir);
+    float c = dot(oc, oc) - s.radius * s.radius;
+    float discriminant = half_b * half_b - a * c;
+    
+    if (discriminant < 0.0) return false;
+    
+    float sqrtd = sqrt(discriminant);
+    float root = (-half_b - sqrtd) / a;
+    
+    if (root < t_min || root > t_max) {
+        root = (-half_b + sqrtd) / a;
+        if (root < t_min || root > t_max) return false;
+    }
+    
+    t_hit = root;
+    vec3 hit_point = ray_origin + t_hit * ray_dir;
+    normal = normalize(hit_point - s.center);
+    return true;
+}
+
+// Calcula cor do pixel
+vec3 ray_color(vec3 origin, vec3 direction) {
+    float closest_t = 1e30;
+    vec3 hit_normal = vec3(0);
+    vec3 hit_color = vec3(0);
+    bool hit_anything = false;
+    
+    // Testa todas as esferas
+    for (int i = 0; i < sphere_count; i++) {
+        float t;
+        vec3 n;
+        if (hit_sphere(origin, direction, spheres[i], 0.001, closest_t, t, n)) {
+            closest_t = t;
+            hit_normal = n;
+            hit_color = spheres[i].color;
+            hit_anything = true;
+        }
+    }
+    
+    if (hit_anything) {
+        // Iluminação básica (Phong simplificado)
+        vec3 result = hit_color * 0.2; // Ambient
+        
+        for (int i = 0; i < light_count; i++) {
+            vec3 light_dir;
+            if (lights[i].light_type == 0) {
+                light_dir = normalize(-lights[i].position); // Directional
+            } else {
+                vec3 hit_point = origin + closest_t * direction;
+                light_dir = normalize(lights[i].position - hit_point);
+            }
+            
+            float diff = max(dot(hit_normal, light_dir), 0.0);
+            result += hit_color * lights[i].color * diff * lights[i].intensity;
+        }
+        
+        return clamp(result, 0.0, 1.0);
+    }
+    
+    // Céu gradiente
+    vec3 unit_dir = normalize(direction);
+    float t = 0.5 * (unit_dir.y + 1.0);
+    return mix(sky_color_bottom, sky_color_top, t);
+}
+
+void main() {
+    ivec2 pixel = ivec2(gl_GlobalInvocationID.xy);
+    
+    if (pixel.x >= image_width || pixel.y >= image_height) return;
+    
+    // Calcula UV
+    float u = float(pixel.x) / float(image_width - 1);
+    float v = float(pixel.y) / float(image_height - 1);
+    
+    // Gera raio
+    vec3 direction = cam_lower_left + u * cam_horizontal + v * cam_vertical - cam_origin;
+    
+    // Calcula cor
+    vec3 color = ray_color(cam_origin, direction);
+    
+    // Escreve resultado
+    imageStore(output_image, pixel, vec4(color, 1.0));
+}

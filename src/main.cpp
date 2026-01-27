@@ -1,5 +1,6 @@
 
 
+#include <GL/glew.h>
 #include <GL/freeglut.h>
 #include <iostream>
 
@@ -8,6 +9,7 @@
 #include "../include/input_handlers.h"
 #include "../include/renderer.h"
 #include "../include/scene_setup.h"
+#include "../include/gpu/gpu_renderer.h"
 
 using namespace std;
 
@@ -31,6 +33,15 @@ int main(int argc, char **argv) {
   glutInitWindowSize(IMAGE_WIDTH, IMAGE_HEIGHT);
   glutInitWindowPosition(100, 100);
   glutCreateWindow("CG - Espada na Pedra (Ray Caster)");
+
+  // Inicializa GPU (após criar janela OpenGL)
+  cout << "Inicializando GPU...\n";
+  if (gpu_init()) {
+    cout << "[GPU] " << gpu_get_info() << " - ATIVADA\n";
+    gpu_upload_scene();
+  } else {
+    cout << "[GPU] Compute shaders indisponiveis. Usando CPU + OpenMP.\n";
+  }
 
   glClearColor(0.0f, 0.0f, 0.0f, 1.0f);
   glPixelStorei(GL_UNPACK_ALIGNMENT, 1);

@@ -67,4 +67,7 @@ extern bool frame_cached;
 extern bvh_scene scene_bvh;
 void build_scene_bvh();
 
+// === OTIMIZAÇÃO: Flag de uso de GPU ===
+extern bool use_gpu;
+
 #endif

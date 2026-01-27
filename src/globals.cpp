@@ -51,3 +51,6 @@ void build_scene_bvh() {
   scene_bvh.build(world.objects);
 }
 
+// === OTIMIZAÇÃO: Flag de uso de GPU ===
+bool use_gpu = false;
+

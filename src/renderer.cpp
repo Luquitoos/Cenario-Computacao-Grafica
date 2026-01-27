@@ -1,5 +1,6 @@
 #include "../include/renderer.h"
 #include "../include/globals.h"
+#include "../include/gpu/gpu_renderer.h"
 #include <algorithm>
 #include <cmath>
 #include <iostream>
@@ -101,8 +102,16 @@ color ray_color(const ray &r, const hittable_list &world) {
 }
 
 void render() {
+  // Tenta usar GPU se disponível e habilitada
+  if (use_gpu && gpu_is_available()) {
+    cout << "Renderizando via GPU (Compute Shader)...\n";
+    gpu_render();
+    return;
+  }
+  
+  // Fallback para CPU com OpenMP + BVH
   cout << "Renderizando " << IMAGE_WIDTH << "x" << IMAGE_HEIGHT
-       << " pixels (OpenMP: " << omp_get_max_threads() << " threads, BVH ativado)...\n";
+       << " pixels (CPU: OpenMP " << omp_get_max_threads() << " threads, BVH)...\n";
 
   #pragma omp parallel for schedule(dynamic, 8)
   for (int j = 0; j < IMAGE_HEIGHT; j++) {
@@ -121,7 +130,7 @@ void render() {
     }
   }
 
-  cout << "Renderizacao concluida!                    \n";
+  cout << "Renderizacao CPU concluida!\n";
   need_redraw = false;
   frame_cached = true;
 }
