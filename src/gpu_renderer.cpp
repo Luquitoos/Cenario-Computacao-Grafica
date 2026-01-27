@@ -1,7 +1,6 @@
 #include "../include/gpu/gpu_renderer.h"
 #include "../include/globals.h"
-#include <GL/glew.h>
-#include <GL/freeglut.h>
+#include "../include/gl_loader.h"
 #include <iostream>
 #include <fstream>
 #include <sstream>
@@ -79,18 +78,9 @@ static GLuint compile_compute_shader(const string& source) {
 bool gpu_init() {
     if (gpu_initialized) return gpu_available;
     
-    // Inicializa GLEW
-    GLenum err = glewInit();
-    if (err != GLEW_OK) {
-        cerr << "[GPU] Erro ao inicializar GLEW: " << glewGetErrorString(err) << endl;
-        gpu_available = false;
-        gpu_initialized = true;
-        return false;
-    }
-    
-    // Verifica suporte a compute shaders (OpenGL 4.3+)
-    if (!GLEW_ARB_compute_shader) {
-        cout << "[GPU] Compute shaders nao suportados. Usando CPU.\n";
+    // Inicializa Extensoes OpenGL manualmente
+    if (!load_gl_extensions()) {
+        cerr << "[GPU] Erro ao carregar extensoes OpenGL." << endl;
         gpu_available = false;
         gpu_initialized = true;
         return false;
@@ -185,7 +175,7 @@ void gpu_upload_scene() {
     
     // Upload luzes
     vector<GPU_Light> gpu_lights;
-    for (const auto& light : lights) {
+    for (size_t i = 0; i < lights.size(); i++) {
         GPU_Light gl;
         // Luz direcional padrão
         gl.position[0] = 1.0f;
@@ -220,27 +210,35 @@ void gpu_render() {
     
     glUseProgram(compute_program);
     
-    // Set uniforms da câmera
-    vec3 cam_lower_left = cam.lower_left_corner;
-    vec3 cam_horiz = cam.horizontal;
-    vec3 cam_vert = cam.vertical;
+    // Calcula vetores da câmera compatíveis com o shader
+    // O shader espera: lower_left, horizontal, vertical (estilo Ray Tracing One Weekend)
+    // A classe Camera tem: eye, w, u, v, xmin, xmax, ymin, ymax
+    
+    vec3 w = cam.w;
+    vec3 u = cam.u;
+    vec3 v = cam.v;
+    double focal_dist = cam.focal_distance;
+    
+    vec3 horizontal = (cam.xmax - cam.xmin) * u;
+    vec3 vertical = (cam.ymax - cam.ymin) * v;
+    vec3 lower_left = cam.eye - focal_dist * w + cam.xmin * u + cam.ymin * v;
     
     glUniform3f(glGetUniformLocation(compute_program, "cam_origin"), 
-                cam_eye[0], cam_eye[1], cam_eye[2]);
+                cam.eye.x(), cam.eye.y(), cam.eye.z());
     glUniform3f(glGetUniformLocation(compute_program, "cam_lower_left"),
-                cam_lower_left.x(), cam_lower_left.y(), cam_lower_left.z());
+                lower_left.x(), lower_left.y(), lower_left.z());
     glUniform3f(glGetUniformLocation(compute_program, "cam_horizontal"),
-                cam_horiz.x(), cam_horiz.y(), cam_horiz.z());
+                horizontal.x(), horizontal.y(), horizontal.z());
     glUniform3f(glGetUniformLocation(compute_program, "cam_vertical"),
-                cam_vert.x(), cam_vert.y(), cam_vert.z());
+                vertical.x(), vertical.y(), vertical.z());
     glUniform1i(glGetUniformLocation(compute_program, "image_width"), IMAGE_WIDTH);
     glUniform1i(glGetUniformLocation(compute_program, "image_height"), IMAGE_HEIGHT);
     
-    // Cores do céu
+    // Cores do céu (color members .r .g .b are public doubles)
     glUniform3f(glGetUniformLocation(compute_program, "sky_color_top"),
-                sky_color_top.r(), sky_color_top.g(), sky_color_top.b());
+                sky_color_top.r, sky_color_top.g, sky_color_top.b);
     glUniform3f(glGetUniformLocation(compute_program, "sky_color_bottom"),
-                sky_color_bottom.r(), sky_color_bottom.g(), sky_color_bottom.b());
+                sky_color_bottom.r, sky_color_bottom.g, sky_color_bottom.b);
     
     // Bind textura de saída
     glBindImageTexture(0, output_texture, 0, GL_FALSE, 0, GL_WRITE_ONLY, GL_RGBA8);

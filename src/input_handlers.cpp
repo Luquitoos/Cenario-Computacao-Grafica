@@ -1,5 +1,6 @@
 #include "../include/input_handlers.h"
 #include "../include/globals.h"
+#include "../include/gpu/gpu_renderer.h"
 #include "../include/gui/gui_manager.h"
 #include "../include/renderer.h"
 #include "../include/scene_setup.h"
@@ -398,8 +399,7 @@ void keyboard(unsigned char key, int x, int y) {
     cout << "=================\n\n";
     break;
 
-  case 'g':
-  case 'G':
+  case 9: // TAB
     GUIManager::toggle();
     glutPostRedisplay();
     break;

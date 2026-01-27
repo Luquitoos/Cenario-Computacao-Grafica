@@ -706,8 +706,7 @@ void add_day_animals() {
 void add_night_animals() {
   const double CX = 900.0;
   const double CZ = 900.0;
-  const double WX = 710.0;
-  const double WZ = 1090.0;
+  // WX e WZ removidos (unused)
 
   // Materiais para animais noturnos
   // Vagalume (luz)
@@ -763,9 +762,7 @@ void add_night_animals() {
   // Normalizado approx: (0.3, 0.95)
   double wdx = 0.3;
   double wdz = 0.95;
-  // Vetor lateral (perpendicular à direita)
-  double wrx = wdz;
-  double wrz = -wdx;
+  // wrx e wrz removidos (unused)
 
   // Offsets para os 3 lobos: Líder, Esq, Dir
   struct WolfOffset {
