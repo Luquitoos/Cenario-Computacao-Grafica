@@ -1,5 +1,6 @@
 #include "../../include/globals.h"
 #include "../../include/gui/gui_manager.h"
+#include <algorithm>
 #include <iomanip>
 #include <iostream>
 #include <sstream>
@@ -9,7 +10,7 @@ using namespace std;
 int GUIManager::selected_light_index = 0;
 
 void GUIManager::drawTabs() {
-  int tab_w = gui_width / 6;
+  int tab_w = gui_width / 7;
   int tab_h = 25;
   int tab_y = gui_y + 25;
 
@@ -24,24 +25,62 @@ void GUIManager::drawTabs() {
   drawButton(gui_x + tab_w * 4, tab_y, tab_w, tab_h, "Transf",
              current_tab == 4);
 
-  drawButton(gui_x + tab_w * 5, tab_y, tab_w, tab_h, "Luz", current_tab == 5);
+  drawButton(gui_x + tab_w * 5, tab_y, tab_w, tab_h, "Cisal", current_tab == 6);
+
+  drawButton(gui_x + tab_w * 6, tab_y, tab_w, tab_h, "Luz", current_tab == 5);
 }
 
 void GUIManager::drawLightingTab() {
   int content_y = gui_y + 60;
   int line_height = 20;
 
-  drawText(gui_x + 10, content_y, "=== Gerenciador de Luzes ===", 0.5f, 0.8f,
-           1.0f);
-  content_y += line_height + 5;
+  int padding = 10;
+  int gap = 10;
+  int col_w, left_x, middle_x, right_x;
 
-  drawText(gui_x + 10, content_y, "Selecione uma luz:", 0.8f, 0.8f, 0.8f);
-  content_y += line_height;
+  if (!is_night_mode) {
+
+    int local_width = gui_width + 200;
+    col_w = (local_width - padding * 2 - gap * 2) / 3;
+    left_x = gui_x + padding;
+    middle_x = gui_x + padding + col_w + gap;
+    right_x = gui_x + padding + col_w * 2 + gap * 2;
+  } else {
+
+    col_w = (gui_width - padding * 2 - gap) / 2;
+    left_x = gui_x + padding;
+    middle_x = -1;
+    right_x = gui_x + padding + col_w + gap;
+  }
+
+  int left_y = content_y;
+  int right_y = content_y;
+
+  drawText(left_x, left_y, "=== Gerenciador de Luzes ===", 0.5f, 0.8f, 1.0f);
+  left_y += line_height + 8;
+
+  drawText(left_x, left_y, "Lista de luzes:", 0.8f, 0.8f, 0.8f);
+  left_y += line_height + 4;
 
   int btn_h = 20;
-  int lights_per_row = 1;
-  int btn_w = (gui_width - 20) / lights_per_row;
+  int btn_w = col_w;
 
+  int list_text_pad = 5;
+
+  {
+    bool is_selected = (selected_light_index == -1);
+    string label = ambient.name.empty() ? "Ambient" : ambient.name;
+    if (!ambient.enabled)
+      label += " (OFF)";
+
+    drawRect(left_x, left_y, btn_w, btn_h, is_selected ? 0.25f : 0.15f,
+             is_selected ? 0.35f : 0.2f, is_selected ? 0.55f : 0.25f, 1.0f);
+    drawText(left_x + list_text_pad, left_y + 14, label, 0.95f, 0.95f, 0.95f);
+
+    left_y += btn_h + 2;
+  }
+
+  int current_list_x = left_x;
   for (size_t i = 0; i < lights.size(); ++i) {
     bool is_selected = (static_cast<int>(i) == selected_light_index);
     string label = lights[i]->name;
@@ -51,54 +90,153 @@ void GUIManager::drawLightingTab() {
     if (!lights[i]->enabled)
       label += " (OFF)";
 
-    if (content_y + btn_h > gui_y + gui_height - 200)
-      break;
+    if (left_y + btn_h > gui_y + gui_height - 10) {
 
-    drawButton(gui_x + 10, content_y, btn_w, btn_h, label, is_selected);
-    content_y += btn_h + 2;
+      if (current_list_x == left_x && middle_x != -1) {
+        current_list_x = middle_x;
+        left_y = content_y + line_height + 8 + line_height + 4 + btn_h + 2;
+      } else {
+        break;
+      }
+    }
+
+    drawRect(current_list_x, left_y, btn_w, btn_h, is_selected ? 0.25f : 0.15f,
+             is_selected ? 0.35f : 0.2f, is_selected ? 0.55f : 0.25f, 1.0f);
+    drawText(current_list_x + list_text_pad, left_y + 14, label, 0.95f, 0.95f,
+             0.95f);
+    left_y += btn_h + 2;
   }
 
-  content_y += 10;
+  if (selected_light_index != last_selected_light_index) {
+    light_pending_loaded = false;
+    light_has_pending_changes = false;
+    last_selected_light_index = selected_light_index;
+  }
+
+  if (!light_pending_loaded) {
+    if (selected_light_index == -1) {
+      pending_light_intensity[0] = ambient.intensity.r;
+      pending_light_intensity[1] = ambient.intensity.g;
+      pending_light_intensity[2] = ambient.intensity.b;
+      pending_light_position_buf[0] = 0;
+      pending_light_position_buf[1] = 0;
+      pending_light_position_buf[2] = 0;
+      pending_light_reach = -1.0;
+    } else if (selected_light_index >= 0 &&
+               selected_light_index < (int)lights.size()) {
+      auto l = lights[selected_light_index];
+      pending_light_intensity[0] = l->intensity.r;
+      pending_light_intensity[1] = l->intensity.g;
+      pending_light_intensity[2] = l->intensity.b;
+
+      point3 p = l->get_position();
+      pending_light_position_buf[0] = p.x();
+      pending_light_position_buf[1] = p.y();
+      pending_light_position_buf[2] = p.z();
+
+      pending_light_reach = l->reach;
+    }
+
+    light_pending_loaded = true;
+  }
+
+  drawText(right_x, right_y, "Propriedades:", 0.8f, 0.8f, 0.8f);
+  right_y += line_height;
+
+  auto drawStepperRow = [&](const string &label, double &val, double min_v,
+                            double max_v, int precision, bool showLabel) {
+    int row_h = 22;
+    int btn_w_local = 22;
+    int btn_h_local = 18;
+
+    int label_w = showLabel ? 28 : 0;
+
+    int x_label = right_x;
+    int x_minus = right_x + label_w;
+    int x_slider = x_minus + btn_w_local + 4;
+    int slider_w = col_w - label_w - btn_w_local * 2 - 8;
+    int x_plus = x_slider + slider_w + 4;
+
+    if (showLabel) {
+      drawText(x_label, right_y + 12, label + ":", 0.9f, 0.9f, 0.9f);
+    }
+
+    drawButton(x_minus, right_y, btn_w_local, btn_h_local, "-");
+    drawSlider(x_slider, right_y, slider_w, (float)val, (float)min_v,
+               (float)max_v, "");
+    drawButton(x_plus, right_y, btn_w_local, btn_h_local, "+");
+
+    ostringstream ss;
+    ss << fixed << setprecision(precision) << val;
+    drawText(right_x + col_w - 60, right_y + 12, ss.str(), 0.85f, 0.85f, 0.85f);
+
+    right_y += row_h;
+  };
+
+  if (selected_light_index == -1) {
+    string toggle_label = ambient.enabled ? "Desativar Luz" : "Ativar Luz";
+    drawButton(right_x, right_y, col_w, 25, toggle_label, ambient.enabled);
+    right_y += 40;
+
+    drawText(right_x, right_y, "Intensidade (RGB):", 0.9f, 0.9f, 0.9f);
+    drawText(right_x, right_y, "Intensidade (RGB):", 0.9f, 0.9f, 0.9f);
+    right_y += line_height + 8;
+
+    drawStepperRow("R", pending_light_intensity[0], 0.0, 2.0, 2, true);
+    drawStepperRow("G", pending_light_intensity[1], 0.0, 2.0, 2, true);
+    drawStepperRow("B", pending_light_intensity[2], 0.0, 2.0, 2, true);
+
+    if (light_has_pending_changes) {
+      drawButton(right_x, right_y + 10, col_w, 28, "APLICAR", true);
+    } else {
+      drawButton(right_x, right_y + 10, col_w, 28, "Aplicar");
+    }
+    return;
+  }
+
   if (selected_light_index >= 0 && selected_light_index < (int)lights.size()) {
     auto l = lights[selected_light_index];
 
     string toggle_label = l->enabled ? "Desativar Luz" : "Ativar Luz";
-    drawButton(gui_x + 10, content_y, gui_width - 20, 25, toggle_label,
-               l->enabled);
-    content_y += 30;
+    drawButton(right_x, right_y, col_w, 25, toggle_label, l->enabled);
+    right_y += 40;
 
-    drawText(gui_x + 10, content_y, "Intensidade (RGB):", 0.9f, 0.9f, 0.9f);
-    content_y += line_height;
+    drawText(right_x, right_y, "Intensidade (RGB):", 0.9f, 0.9f, 0.9f);
+    drawText(right_x, right_y, "Intensidade (RGB):", 0.9f, 0.9f, 0.9f);
+    right_y += line_height + 8;
 
-    stringstream ss_int;
-    ss_int << fixed << setprecision(2) << l->intensity.r << " "
-           << l->intensity.g << " " << l->intensity.b;
-    drawText(gui_x + 10, content_y, ss_int.str(), l->intensity.r,
-             l->intensity.g, l->intensity.b);
+    drawStepperRow("R", pending_light_intensity[0], 0.0, 2.0, 2, true);
+    drawStepperRow("G", pending_light_intensity[1], 0.0, 2.0, 2, true);
+    drawStepperRow("B", pending_light_intensity[2], 0.0, 2.0, 2, true);
 
-    drawSlider(gui_x + 10, content_y + 5, 150, l->intensity.r, 0.0f, 2.0f, "R");
-    content_y += 20;
-    // Green
-    drawSlider(gui_x + 10, content_y + 5, 150, l->intensity.g, 0.0f, 2.0f, "G");
-    content_y += 20;
-    // Blue
-    drawSlider(gui_x + 10, content_y + 5, 150, l->intensity.b, 0.0f, 2.0f, "B");
-    content_y += 25;
-
-    point3 pos = l->get_position();
+    point3 pos(pending_light_position_buf[0], pending_light_position_buf[1],
+               pending_light_position_buf[2]);
 
     if (abs(pos.x()) < 10000 && abs(pos.y()) < 10000 && abs(pos.z()) < 10000) {
-      drawText(gui_x + 10, content_y, "Posicao (X, Y, Z):", 0.9f, 0.9f, 0.9f);
-      content_y += line_height;
+      right_y += 10;
+      drawText(right_x, right_y, "Posicao (X, Y, Z):", 0.9f, 0.9f, 0.9f);
+      drawText(right_x, right_y, "Posicao (X, Y, Z):", 0.9f, 0.9f, 0.9f);
+      right_y += line_height + 8;
 
-      drawSlider(gui_x + 10, content_y + 5, 150, pos.x(), 0.0f, 2000.0f, "X");
-      content_y += 20;
+      drawStepperRow("X", pending_light_position_buf[0], 0.0, 2000.0, 0, true);
+      drawStepperRow("Y", pending_light_position_buf[1], 0.0, 1000.0, 0, true);
+      drawStepperRow("Z", pending_light_position_buf[2], 0.0, 2000.0, 0, true);
+    }
 
-      drawSlider(gui_x + 10, content_y + 5, 150, pos.y(), 0.0f, 1000.0f, "Y");
-      content_y += 20;
+    if (l->supports_reach()) {
+      right_y += 6;
+      drawText(right_x, right_y, "Alcance/Espalhamento:", 0.9f, 0.9f, 0.9f);
+      right_y += line_height;
 
-      drawSlider(gui_x + 10, content_y + 5, 150, pos.z(), 0.0f, 2000.0f, "Z");
-      content_y += 25;
+      if (pending_light_reach < 0)
+        pending_light_reach = 0;
+      drawStepperRow("R", pending_light_reach, 0.0, 2000.0, 0, true);
+    }
+
+    if (light_has_pending_changes) {
+      drawButton(right_x, right_y + 10, col_w, 28, "APLICAR", true);
+    } else {
+      drawButton(right_x, right_y + 10, col_w, 28, "Aplicar");
     }
   }
 }
@@ -142,7 +280,7 @@ void GUIManager::drawTransformTab() {
 
   if (!pending_values_loaded && get_transform_state) {
     if (get_transform_state(*selected_transform_name_ptr, pending_translation,
-                            pending_rotation, pending_scale)) {
+                            pending_rotation, pending_scale, pending_shear)) {
       pending_values_loaded = true;
       has_pending_changes = false;
     } else {
@@ -179,19 +317,6 @@ void GUIManager::drawTransformTab() {
 
     drawButton(gui_x + 54, content_y, 22, 18, "+");
 
-    // Sliders for Translation (using drawSlider helper logic visualized)
-    // Assuming drawSlider exists or we use buttons for now as in Transf tab
-    // The visual shows generic sliders.
-    // Re-use logic or just rely on existing Transf tab structure
-    // Wait, Transf tab uses buttons + and -
-    // The user requested a tab where they can "change place" and "increase
-    // intensity with a bar" So "bar" implies slider. I need to ensure
-    // drawSlider implementation exists or logic for it. I see `drawSlider`
-    // declared in header. I will assume it's implemented (I saw it declared in
-    // step 997 but not implemented in file view in step 1001? Wait. Step 1001
-    // showed lines 1-100. Step 1002 lines 400-454. I missed checking if
-    // drawSlider IS implemented. If it's not implemented, I need to implement
-    // it. I'll add `drawSlider` implementation if missing.
     int slider_x = gui_x + 78;
     int slider_w = gui_width - 125;
     drawSlider(slider_x, content_y, slider_w, (float)pending_translation[i],
@@ -525,12 +650,17 @@ void GUIManager::draw() {
   if (!gui_visible)
     return;
 
-  drawRect(gui_x, gui_y, gui_width, gui_height, 0.1f, 0.1f, 0.15f, 0.92f);
-  drawRect(gui_x, gui_y, gui_width, 25, 0.2f, 0.3f, 0.5f, 1.0f);
+  int bg_width = gui_width;
+  if (current_tab == 5 && !is_night_mode) {
+    bg_width += 200;
+  }
+
+  drawRect(gui_x, gui_y, bg_width, gui_height, 0.1f, 0.1f, 0.15f, 0.92f);
+  drawRect(gui_x, gui_y, bg_width, 25, 0.2f, 0.3f, 0.5f, 1.0f);
 
   drawText(gui_x + 10, gui_y + 17, "Painel de Controle", 1.0f, 1.0f, 1.0f);
-  drawRect(gui_x + gui_width - 25, gui_y + 2, 21, 21, 0.6f, 0.2f, 0.2f, 1.0f);
-  drawText(gui_x + gui_width - 19, gui_y + 17, "X", 1.0f, 1.0f, 1.0f);
+  drawRect(gui_x + bg_width - 25, gui_y + 2, 21, 21, 0.6f, 0.2f, 0.2f, 1.0f);
+  drawText(gui_x + bg_width - 19, gui_y + 17, "X", 1.0f, 1.0f, 1.0f);
 
   drawTabs();
 
@@ -553,5 +683,77 @@ void GUIManager::draw() {
   case 5:
     drawLightingTab();
     break;
+  case 6:
+    GUIManager::drawShearTab();
+    break;
   }
+}
+
+void GUIManager::drawShearTab() {
+  int content_y = gui_y + 60;
+  int line_height = 20;
+
+  if (!selected_transform_name_ptr || selected_transform_name_ptr->empty()) {
+    drawText(gui_x + 10, content_y, "Nenhum objeto", 0.8f, 0.8f, 0.8f);
+    content_y += line_height;
+    drawText(gui_x + 10, content_y, "transformavel selecionado.", 0.8f, 0.8f,
+             0.8f);
+    return;
+  }
+
+  if (!pending_values_loaded && get_transform_state) {
+    if (get_transform_state(*selected_transform_name_ptr, pending_translation,
+                            pending_rotation, pending_scale, pending_shear)) {
+      pending_values_loaded = true;
+      has_pending_changes = false;
+    } else {
+      drawText(gui_x + 10, content_y, "Erro ao ler transform.", 1.0f, 0.3f,
+               0.3f);
+      return;
+    }
+  }
+
+  drawText(gui_x + 10, content_y, "Objeto: " + *selected_transform_name_ptr,
+           0.5f, 0.8f, 1.0f);
+  content_y += line_height + 5;
+
+  if (has_pending_changes) {
+    drawText(gui_x + 10, content_y, "* Alteracoes Pendentes *", 1.0f, 0.5f,
+             0.0f);
+  } else {
+    drawText(gui_x + 10, content_y, "Valores Sincronizados", 0.0f, 1.0f, 0.0f);
+  }
+  content_y += line_height;
+
+  auto drawStepper = [&](int x, int y, double &val, double min_v, double max_v,
+                         const string &label) {
+    drawText(x, y + 12, label, 0.9f, 0.9f, 0.9f);
+    drawButton(x + 25, y, 22, 18, "-");
+    drawSlider(x + 50, y, 100, (float)val, (float)min_v, (float)max_v, "");
+    drawButton(x + 155, y, 22, 18, "+");
+
+    ostringstream ss;
+    ss << fixed << setprecision(2) << val;
+    drawText(x + 190, y + 12, ss.str(), 0.85f, 0.85f, 0.85f);
+  };
+
+  string labels[6] = {"XY", "XZ", "YX", "YZ", "ZX", "ZY"};
+  for (int i = 0; i < 6; i++) {
+    drawStepper(gui_x + 10, content_y, pending_shear[i], -5.0, 5.0, labels[i]);
+    content_y += 25;
+  }
+
+  content_y += 10;
+
+  if (has_pending_changes) {
+    drawRect(gui_x + 10, content_y, gui_width - 20, 35, 0.2f, 0.8f, 0.2f, 1.0f);
+    drawText(gui_x + gui_width / 2 - 30, content_y + 22, "APLICAR", 0.0f, 0.0f,
+             0.0f);
+    drawRect(gui_x + 10, content_y, gui_width - 20, 35, 0.2f, 0.8f, 0.2f, 0.0f);
+  } else {
+    drawButton(gui_x + 10, content_y, gui_width - 20, 35, "Aplicar");
+  }
+
+  content_y += 40;
+  drawButton(gui_x + 10, content_y, gui_width - 20, 30, "Reset Objects");
 }

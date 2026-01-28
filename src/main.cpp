@@ -67,7 +67,8 @@ int main(int argc, char **argv) {
         glutPostRedisplay();
       },
 
-      [](const string &name, double *t, double *r, double *s) -> bool {
+      [](const string &name, double *t, double *r, double *s,
+         double *sh) -> bool {
         if (object_states.find(name) != object_states.end()) {
           TransformState &st = object_states[name];
           t[0] = st.translation.x();
@@ -79,18 +80,23 @@ int main(int argc, char **argv) {
           s[0] = st.scale.x();
           s[1] = st.scale.y();
           s[2] = st.scale.z();
+          for (int i = 0; i < 6; i++)
+            sh[i] = st.shear[i];
           return true;
         }
         return false;
       },
 
-      [](const string &name, const double *t, const double *r,
-         const double *s) {
+      [](const string &name, const double *t, const double *r, const double *s,
+         const double *sh) {
         if (object_states.find(name) != object_states.end()) {
           TransformState &st = object_states[name];
           st.translation = vec3(t[0], t[1], t[2]);
           st.rotation = vec3(r[0], r[1], r[2]);
           st.scale = vec3(s[0], s[1], s[2]);
+          for (int i = 0; i < 6; i++)
+            st.shear[i] = sh[i];
+
           update_object_transform(name);
 
           if (name == "Espada Completa") {

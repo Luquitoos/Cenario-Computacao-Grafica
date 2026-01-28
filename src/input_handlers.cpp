@@ -9,6 +9,9 @@
 
 using namespace std;
 
+// [Requisito 5] Interatividade
+// [Requisito 5.1] Implementar a função de pick (Obrigatório)
+// Identifica o objeto clicado pelo mouse lançando um raio na cena.
 void perform_pick(int mouse_x, int mouse_y) {
   int window_height = glutGet(GLUT_WINDOW_HEIGHT);
   int image_y_start = window_height - IMAGE_HEIGHT;
@@ -223,6 +226,8 @@ void display() {
     }
   }
 
+  // [Requisito 5.2] Uso de interface gráfica (Bônus)
+  // Exibe informações na tela e permite controle via GUI (GUIManager).
   GUIManager::draw();
 
   glutSwapBuffers();
@@ -245,6 +250,8 @@ void keyboard(unsigned char key, int x, int y) {
 
   case 'w':
   case 'W':
+    // [Requisito 2] Câmera
+    // Controle de posição (Eye) e ponto de mira (At) para navegação na cena.
     cam_eye = cam_eye + forward * cam_speed;
     cam_at = cam_at + forward * cam_speed;
     setup_camera();
@@ -350,6 +357,9 @@ void keyboard(unsigned char key, int x, int y) {
 
   case '+':
   case '=':
+    // [Requisito 3.1.1] Zoom In
+    // Reduz o tamanho da janela de visualização (ou diminui o FOV), aproximando
+    // a imagem.
     cam.zoom_in(0.8);
     need_redraw = true;
     changed = true;
@@ -358,6 +368,8 @@ void keyboard(unsigned char key, int x, int y) {
 
   case '-':
   case '_':
+    // [Requisito 3.1.1] Zoom Out
+    // Aumenta o tamanho da janela de visualização, afastando a imagem.
     cam.zoom_out(1.25);
     need_redraw = true;
     changed = true;
@@ -470,6 +482,8 @@ void mouse(int button, int state, int x, int y) {
   }
 
   if (button == GLUT_LEFT_BUTTON && state == GLUT_DOWN) {
+    // [Requisito 5.1] Pick (Função de seleção)
+    // Ao clicar, identifica qual objeto está sob o cursor.
     perform_pick(x, y);
     glutPostRedisplay();
   }

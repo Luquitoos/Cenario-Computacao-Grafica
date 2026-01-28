@@ -455,7 +455,7 @@ bool GUIManager::handleTransformTabClick(int local_x, int local_y) {
     if (local_x >= 10 && local_x <= gui_width - 10) {
 
       set_transform_state(*selected_transform_name_ptr, pending_translation,
-                          pending_rotation, pending_scale);
+                          pending_rotation, pending_scale, pending_shear);
       has_pending_changes = false;
       cout << "[GUI] Transformacoes APLICADAS!\n";
       return true;
@@ -531,105 +531,350 @@ bool GUIManager::handleTransformTabClick(int local_x, int local_y) {
 }
 
 bool GUIManager::handleLightingTabClick(int local_x, int local_y) {
-  int content_y = gui_y + 60 + 20 + 5;
-  content_y += 20;
 
-  int btn_h = 20;
-  int lights_per_row = 1;
-  int btn_w = (gui_width - 20) / lights_per_row;
+  int padding = 10;
+  int gap = 10;
+  int col_w, left_x, middle_x, right_x;
 
-  for (size_t i = 0; i < lights.size(); ++i) {
-    if (content_y + btn_h > gui_y + gui_height - 200)
-      break;
+  if (!is_night_mode) {
 
-    if (local_y >= content_y && local_y <= content_y + btn_h) {
-      if (local_x >= 10 && local_x <= 10 + btn_w) {
-        selected_light_index = (int)i;
-        if (need_redraw_ptr)
-          *need_redraw_ptr = true;
-        return true;
-      }
-    }
-    content_y += btn_h + 2;
+    int local_width = gui_width + 200;
+    col_w = (local_width - padding * 2 - gap * 2) / 3;
+    left_x = padding;
+    middle_x = padding + col_w + gap;
+    right_x = padding + col_w * 2 + gap * 2;
+  } else {
+
+    col_w = (gui_width - padding * 2 - gap) / 2;
+    left_x = padding;
+    middle_x = -1;
+    right_x = padding + col_w + gap;
   }
 
-  content_y += 10;
-  if (selected_light_index >= 0 && selected_light_index < (int)lights.size()) {
-    auto l = lights[selected_light_index];
-    if (local_y >= content_y && local_y <= content_y + 25) {
-      if (local_x >= 10 && local_x <= gui_width - 10) {
-        l->enabled = !l->enabled;
-        if (need_redraw_ptr)
-          *need_redraw_ptr = true;
+  int y = 60;
+  y += 20 + 8;
+  y += 20 + 4;
+
+  int btn_h = 20;
+
+  if (local_y >= y && local_y <= y + btn_h) {
+    if (local_x >= left_x && local_x <= left_x + col_w) {
+      selected_light_index = -1;
+      light_pending_loaded = false;
+      light_has_pending_changes = false;
+      last_selected_light_index = -999;
+      if (need_redraw_ptr) {
+      }
+      return true;
+    }
+  }
+  y += btn_h + 2;
+
+  int current_list_x = left_x;
+  for (size_t i = 0; i < lights.size(); ++i) {
+    if (y + btn_h > gui_height - 10) {
+      if (current_list_x == left_x && middle_x != -1) {
+        current_list_x = middle_x;
+        y = 60 + (20 + 8) + (20 + 4) + (btn_h + 2);
+      } else {
+        break;
+      }
+    }
+
+    if (local_y >= y && local_y <= y + btn_h) {
+      if (local_x >= current_list_x && local_x <= current_list_x + col_w) {
+        selected_light_index = (int)i;
+        light_pending_loaded = false;
+        light_has_pending_changes = false;
+        last_selected_light_index = -999;
+        if (need_redraw_ptr) {
+        }
         return true;
       }
     }
-    content_y += 30;
 
-    content_y += 20;
-    content_y += 20;
+    y += btn_h + 2;
+  }
 
-    int slider_w = 150;
-    int slider_x = 10;
+  int ry = 60;
+  ry += 20;
 
-    auto handleSlider = [&](double &val, float min_v, float max_v,
-                            int cy) -> bool {
-      if (local_y >= cy + 5 && local_y <= cy + 15) {
-        if (local_x >= slider_x && local_x <= slider_x + slider_w) {
-          float ratio = (float)(local_x - slider_x) / (float)slider_w;
-          if (ratio < 0)
-            ratio = 0;
-          if (ratio > 1)
-            ratio = 1;
-          val = min_v + ratio * (max_v - min_v);
-          if (need_redraw_ptr)
-            *need_redraw_ptr = true;
-          return true;
-        }
+  if (!light_pending_loaded) {
+
+    if (selected_light_index != last_selected_light_index) {
+      light_has_pending_changes = false;
+      last_selected_light_index = selected_light_index;
+    }
+
+    if (selected_light_index == -1) {
+      pending_light_intensity[0] = ambient.intensity.r;
+      pending_light_intensity[1] = ambient.intensity.g;
+      pending_light_intensity[2] = ambient.intensity.b;
+      pending_light_position_buf[0] = 0;
+      pending_light_position_buf[1] = 0;
+      pending_light_position_buf[2] = 0;
+      pending_light_reach = -1.0;
+    } else if (selected_light_index >= 0 &&
+               selected_light_index < (int)lights.size()) {
+      auto l = lights[selected_light_index];
+      pending_light_intensity[0] = l->intensity.r;
+      pending_light_intensity[1] = l->intensity.g;
+      pending_light_intensity[2] = l->intensity.b;
+      point3 p = l->get_position();
+      pending_light_position_buf[0] = p.x();
+      pending_light_position_buf[1] = p.y();
+      pending_light_position_buf[2] = p.z();
+      pending_light_reach = l->reach;
+    }
+    light_pending_loaded = true;
+  }
+
+  ry += 5;
+
+  if (local_y >= ry && local_y <= ry + 25) {
+    if (local_x >= right_x && local_x <= right_x + col_w) {
+      if (selected_light_index == -1) {
+        ambient.enabled = !ambient.enabled;
+      } else if (selected_light_index >= 0 &&
+                 selected_light_index < (int)lights.size()) {
+        lights[selected_light_index]->enabled =
+            !lights[selected_light_index]->enabled;
       }
-      return false;
-    };
-
-    if (handleSlider(l->intensity.r, 0.0f, 2.0f, content_y))
+      if (need_redraw_ptr)
+        *need_redraw_ptr = true;
       return true;
-    content_y += 20;
+    }
+  }
+  ry += 35;
 
-    if (handleSlider(l->intensity.g, 0.0f, 2.0f, content_y))
+  auto hitStepper = [&](double &val, double step, double min_v, double max_v,
+                        bool showLabel) -> bool {
+    int row_y = ry;
+
+    int btn_w_local = 22;
+    int btn_h_local = 18;
+    int label_w = showLabel ? 28 : 0;
+
+    int x_minus = right_x + label_w;
+    int x_slider = x_minus + btn_w_local + 4;
+    int slider_w = col_w - label_w - btn_w_local * 2 - 8;
+    int x_plus = x_slider + slider_w + 4;
+
+    if (local_y >= row_y && local_y <= row_y + btn_h_local &&
+        local_x >= x_minus && local_x <= x_minus + btn_w_local) {
+      val -= step;
+      if (val < min_v)
+        val = min_v;
+      light_has_pending_changes = true;
+      if (need_redraw_ptr)
+        *need_redraw_ptr = true;
       return true;
-    content_y += 20;
+    }
 
-    if (handleSlider(l->intensity.b, 0.0f, 2.0f, content_y))
+    if (local_y >= row_y && local_y <= row_y + btn_h_local &&
+        local_x >= x_plus && local_x <= x_plus + btn_w_local) {
+      val += step;
+      if (val > max_v)
+        val = max_v;
+      light_has_pending_changes = true;
+      if (need_redraw_ptr)
+        *need_redraw_ptr = true;
       return true;
-    content_y += 25;
+    }
 
-    point3 pos = l->get_position();
+    return false;
+  };
+
+  ry += 20;
+
+  if (hitStepper(pending_light_intensity[0], 0.05, 0.0, 2.0, true))
+    return true;
+  ry += 22;
+
+  if (hitStepper(pending_light_intensity[1], 0.05, 0.0, 2.0, true))
+    return true;
+  ry += 22;
+
+  if (hitStepper(pending_light_intensity[2], 0.05, 0.0, 2.0, true))
+    return true;
+  ry += 22;
+
+  if (selected_light_index >= 0 && selected_light_index < (int)lights.size()) {
+    auto l = lights[selected_light_index];
+
+    point3 pos(l->get_position());
     if (abs(pos.x()) < 10000 && abs(pos.y()) < 10000 && abs(pos.z()) < 10000) {
-      content_y += 20;
+      ry += 6;
+      ry += 20;
 
-      double px = pos.x();
-      double py = pos.y();
-      double pz = pos.z();
-      bool changed = false;
+      if (hitStepper(pending_light_position_buf[0], 10.0, 0.0, 2000.0, true))
+        return true;
+      ry += 22;
+      if (hitStepper(pending_light_position_buf[1], 10.0, 0.0, 1000.0, true))
+        return true;
+      ry += 22;
+      if (hitStepper(pending_light_position_buf[2], 10.0, 0.0, 2000.0, true))
+        return true;
+      ry += 22;
+    }
 
-      if (handleSlider(px, 0.0f, 2000.0f, content_y))
-        changed = true;
-      content_y += 20;
+    if (l->supports_reach()) {
+      ry += 6;
+      ry += 20;
+      if (pending_light_reach < 0)
+        pending_light_reach = 0;
+      if (hitStepper(pending_light_reach, 25.0, 0.0, 2000.0, true))
+        return true;
+      ry += 22;
+    }
+  }
 
-      if (handleSlider(py, 0.0f, 1000.0f, content_y))
-        changed = true;
-      content_y += 20;
+  int apply_y = ry + 10;
+  if (local_y >= apply_y && local_y <= apply_y + 28 && local_x >= right_x &&
+      local_x <= right_x + col_w) {
 
-      if (handleSlider(pz, 0.0f, 2000.0f, content_y))
-        changed = true;
-      content_y += 25;
+    if (!light_has_pending_changes)
+      return true;
 
-      if (changed) {
-        l->set_position(point3(px, py, pz));
+    if (selected_light_index == -1) {
+      ambient.intensity =
+          color(pending_light_intensity[0], pending_light_intensity[1],
+                pending_light_intensity[2]);
+    } else if (selected_light_index >= 0 &&
+               selected_light_index < (int)lights.size()) {
+      auto l = lights[selected_light_index];
 
-        if (need_redraw_ptr)
-          *need_redraw_ptr = true;
+      l->intensity =
+          color(pending_light_intensity[0], pending_light_intensity[1],
+                pending_light_intensity[2]);
+
+      point3 pos(pending_light_position_buf[0], pending_light_position_buf[1],
+                 pending_light_position_buf[2]);
+      l->set_position(pos);
+
+      if (l->supports_reach()) {
+        l->set_reach(pending_light_reach);
+      }
+    }
+
+    light_has_pending_changes = false;
+    if (need_redraw_ptr)
+      *need_redraw_ptr = true;
+    return true;
+  }
+
+  return false;
+}
+
+bool GUIManager::handleShearTabClick(int local_x, int local_y) {
+  if (!selected_transform_name_ptr || selected_transform_name_ptr->empty() ||
+      !set_transform_state)
+    return false;
+
+  if (!pending_values_loaded)
+    return false;
+
+  int content_y = 60 + 20 + 5 + 20; // 105
+  double min_v = -5.0;
+  double max_v = 5.0;
+
+  for (int i = 0; i < 6; i++) {
+    int y = content_y + i * 25;
+
+    // Minus button
+    if (local_y >= y && local_y <= y + 18) {
+      if (local_x >= 35 && local_x <= 35 + 22) {
+        pending_shear[i] -= 0.1;
+        if (pending_shear[i] < min_v)
+          pending_shear[i] = min_v;
+        has_pending_changes = true;
         return true;
       }
+      // Plus button
+      if (local_x >= 165 && local_x <= 165 + 22) {
+        pending_shear[i] += 0.1;
+        if (pending_shear[i] > max_v)
+          pending_shear[i] = max_v;
+        has_pending_changes = true;
+        return true;
+      }
+      // Slider
+      if (local_x >= 60 && local_x <= 160) {
+        float ratio = (float)(local_x - 60) / 100.0f;
+        if (ratio < 0.0f)
+          ratio = 0.0f;
+        if (ratio > 1.0f)
+          ratio = 1.0f;
+        pending_shear[i] = min_v + ratio * (max_v - min_v);
+        has_pending_changes = true;
+        return true;
+      }
+    }
+  }
+
+  int apply_y = content_y + 6 * 25 + 10;
+  if (local_y >= apply_y && local_y <= apply_y + 35) {
+    if (local_x >= 10 && local_x <= gui_width - 10) {
+      set_transform_state(*selected_transform_name_ptr, pending_translation,
+                          pending_rotation, pending_scale, pending_shear);
+      has_pending_changes = false;
+      cout << "[GUI] Shear APLICADAS!\n";
+      return true;
+    }
+  }
+
+  int reset_y = apply_y + 40;
+  if (local_y >= reset_y && local_y <= reset_y + 30) {
+    if (local_x >= 10 && local_x <= gui_width - 10) {
+      cout << "[GUI] Resetting ALL objects via Shear Tab...\n";
+      bool any_reset = false;
+      for (auto const &[name, initial_state] : initial_object_states) {
+        if (object_transforms.find(name) != object_transforms.end()) {
+          object_states[name] = initial_state;
+          auto t_obj = object_transforms[name];
+
+          mat4 T = mat4::translate(initial_state.translation.x(),
+                                   initial_state.translation.y(),
+                                   initial_state.translation.z());
+          mat4 Tinv = mat4::translate_inverse(initial_state.translation.x(),
+                                              initial_state.translation.y(),
+                                              initial_state.translation.z());
+
+          mat4 Rx =
+              mat4::rotate_x(degrees_to_radians(initial_state.rotation.x()));
+          mat4 Ry =
+              mat4::rotate_y(degrees_to_radians(initial_state.rotation.y()));
+          mat4 Rz =
+              mat4::rotate_z(degrees_to_radians(initial_state.rotation.z()));
+          mat4 R = Rz * Ry * Rx;
+
+          mat4 Rinv = mat4::rotate_x_inverse(
+                          degrees_to_radians(initial_state.rotation.x())) *
+                      mat4::rotate_y_inverse(
+                          degrees_to_radians(initial_state.rotation.y())) *
+                      mat4::rotate_z_inverse(
+                          degrees_to_radians(initial_state.rotation.z()));
+
+          mat4 S = mat4::scale(initial_state.scale.x(), initial_state.scale.y(),
+                               initial_state.scale.z());
+          mat4 Sinv = mat4::scale_inverse(initial_state.scale.x(),
+                                          initial_state.scale.y(),
+                                          initial_state.scale.z());
+
+          t_obj->set_transform(T * R * S, Sinv * Rinv * Tinv);
+          any_reset = true;
+        }
+      }
+
+      if (any_reset) {
+        if (selected_transform_name_ptr &&
+            !selected_transform_name_ptr->empty()) {
+          pending_values_loaded = false;
+        }
+        if (need_redraw_ptr)
+          *need_redraw_ptr = true;
+      }
+      return true;
     }
   }
 
@@ -652,7 +897,7 @@ bool GUIManager::handleMouseClick(int mouse_x, int mouse_y, int button,
     return true;
   }
 
-  int tab_w = gui_width / 6;
+  int tab_w = gui_width / 7;
   int tab_y = gui_y + 25;
   int tab_h = 25;
 
@@ -678,8 +923,13 @@ bool GUIManager::handleMouseClick(int mouse_x, int mouse_y, int button,
       gui_height = 480;
       pending_values_loaded = false;
       return true;
-    } else if (mouse_x >= gui_x + tab_w * 5 && mouse_x <= gui_x + gui_width) {
-      current_tab = 5;
+    } else if (mouse_x >= gui_x + tab_w * 5 && mouse_x < gui_x + tab_w * 6) {
+      current_tab = 6; // Cisal Tab
+      gui_height = 420;
+      pending_values_loaded = false;
+      return true;
+    } else if (mouse_x >= gui_x + tab_w * 6 && mouse_x <= gui_x + gui_width) {
+      current_tab = 5; // Light Tab
       gui_height = 550;
       return true;
     }
@@ -711,6 +961,10 @@ bool GUIManager::handleMouseClick(int mouse_x, int mouse_y, int button,
     break;
   case 5:
     if (handleLightingTabClick(local_x, local_y))
+      return true;
+    break;
+  case 6:
+    if (handleShearTabClick(local_x, local_y))
       return true;
     break;
   }

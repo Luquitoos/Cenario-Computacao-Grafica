@@ -47,7 +47,11 @@ struct TransformState {
   vec3 rotation;
   vec3 translation;
 
-  TransformState() : scale(1, 1, 1), rotation(0, 0, 0), translation(0, 0, 0) {}
+  TransformState() : scale(1, 1, 1), rotation(0, 0, 0), translation(0, 0, 0) {
+    for (int i = 0; i < 6; i++)
+      shear[i] = 0.0;
+  }
+  double shear[6];
 };
 
 extern std::map<std::string, TransformState> object_states;

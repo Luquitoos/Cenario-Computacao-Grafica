@@ -11,22 +11,30 @@ enum class ProjectionType { PERSPECTIVE, ORTHOGRAPHIC, OBLIQUE };
 
 class camera {
 public:
+  // [Requisito 2] Câmera (Obrigatório)
+  // Define a posição do observador (eye), para onde ele olha (at) e a
+  // orientação vertical (up). [Requisito 2.1] Especificação de Eye, At e Up
   point3 eye;
   point3 at;
   vec3 up;
 
+  // [Requisito 2.2] Distância focal e Campo de visão (FOV)
+  // O FOV é determinado pelas dimensões da janela de projeção (xmin, xmax,
+  // ymin, ymax) e pela distância focal (focal_distance).
   double focal_distance;
   double xmin, xmax;
   double ymin, ymax;
 
+  // [Requisito 3] Projeções (Obrigatório)
+  // Suporta Perspectiva, Ortográfica e Oblíqua.
   ProjectionType projection;
 
   double oblique_angle;
   double oblique_strength;
 
-  vec3 w, u, v;
-  mat4 Mwc;
-  mat4 Mcw;
+  vec3 w, u, v; // Vetores da base da câmera (sistema de coordenadas)
+  mat4 Mwc;     // Matriz World-to-Camera
+  mat4 Mcw;     // Matriz Camera-to-World
 
   camera() {
     setup(point3(0, 0, 5), point3(0, 0, 0), vec3(0, 1, 0), 1.0, -1, 1, -1, 1,
@@ -89,6 +97,9 @@ public:
     }
   }
 
+  // [Requisito 3.1] Perspectiva (Obrigatório)
+  // Os raios partem do olho (eye) e passam pelo pixel na janela de projeção.
+  // Causa o efeito de diminuição dos objetos com a distância (escorço).
   ray get_perspective_ray(double x, double y) const {
 
     point3 pixel_pos = eye - focal_distance * w + x * u + y * v;
@@ -96,6 +107,9 @@ public:
     return ray(eye, direction);
   }
 
+  // [Requisito 3.2] Ortográfica (Obrigatório)
+  // Os raios são paralelos entre si (direção -w). Não há ponto de fuga.
+  // Preserva as dimensões e paralelismo dos objetos.
   ray get_orthographic_ray(double x, double y) const {
 
     point3 origin = eye + x * u + y * v;
@@ -104,16 +118,25 @@ public:
     return ray(origin, direction);
   }
 
+  // [Requisito 3.3] Oblíqua (Obrigatório)
+  // Produzida por raios paralelos que incidem não perpendicularmente ao plano
+  // de projeção. Preserva faces frontais mas projeta profundidade com
+  // cisalhamento.
   ray get_oblique_ray(double x, double y) const {
 
     point3 origin = eye + x * u + y * v;
 
+    // Ajuste de direção para simular projeção oblíqua (Cabinet/Cavalier)
     double shear_x = oblique_strength * std::cos(oblique_angle);
     double shear_y = oblique_strength * std::sin(oblique_angle);
     vec3 direction = unit_vector(-w + shear_x * u + shear_y * v);
     return ray(origin, direction);
   }
 
+  // [Requisito 3.1.1] Zoom (Alterar parâmetros adicionais da câmera)
+  // [Requisito 3.1.1.2] Diminuir o campo de visão (Zoom In) (Obrigatório)
+  // Reduz o tamanho da janela de projeção (xmin, xmax, ymin, ymax) e/ou altera
+  // a distância focal.
   void zoom_in(double factor = 0.8) {
 
     double cx = (xmin + xmax) / 2;
@@ -126,6 +149,7 @@ public:
     ymax = cy + hh;
   }
 
+  // [Requisito 3.1.1.1] Aumentar o campo de visão (Zoom Out) (Obrigatório)
   void zoom_out(double factor = 1.25) { zoom_in(factor); }
 
   void set_focal_distance(double d) { focal_distance = d; }

@@ -14,6 +14,9 @@ public:
   std::string name;
   color emission;
 
+  // [Requisito 1.3.2] Materiais (Obrigatório: pelo menos 4 materiais distintos)
+  // define propriedades como difusa (kd), ambiente (ka), especular (ks), brilho
+  // etc. Suporta cor sólida ou textura.
   material()
       : kd(std::make_shared<solid_color>(colors::gray)), ka(0.1, 0.1, 0.1),
         ks(0.3, 0.3, 0.3), shininess(32.0), name("default"), emission(0, 0, 0) {
@@ -47,6 +50,8 @@ public:
 
 namespace materials {
 
+// [Requisito 1.3.3] Textura (Obrigatório: pelo menos 1 textura aplicada)
+// Aplica a textura 'metal_lamina.jpg' ao material 'Sword Metal'.
 inline std::shared_ptr<material> sword_metal() {
   auto tex = std::make_shared<image_texture>("textures/metal_lamina.jpg");
   return std::make_shared<material>(

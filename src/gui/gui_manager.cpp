@@ -33,6 +33,7 @@ string *GUIManager::selected_transform_name_ptr = nullptr;
 double GUIManager::pending_translation[3] = {0, 0, 0};
 double GUIManager::pending_rotation[3] = {0, 0, 0};
 double GUIManager::pending_scale[3] = {1, 1, 1};
+double GUIManager::pending_shear[6] = {0, 0, 0, 0, 0, 0};
 bool GUIManager::has_pending_changes = false;
 bool GUIManager::pending_values_loaded = false;
 
@@ -48,10 +49,18 @@ function<void(bool)> GUIManager::on_blade_shine_toggle = nullptr;
 function<void(bool)> GUIManager::on_day_night_toggle = nullptr;
 function<void(int)> GUIManager::on_vanishing_point_change = nullptr;
 int *GUIManager::vanishing_points_preset_ptr = nullptr;
-function<bool(const string &, double *, double *, double *)>
+function<bool(const string &, double *, double *, double *, double *)>
     GUIManager::get_transform_state = nullptr;
-function<void(const string &, const double *, const double *, const double *)>
+function<void(const string &, const double *, const double *, const double *,
+              const double *)>
     GUIManager::set_transform_state = nullptr;
+
+bool GUIManager::light_pending_loaded = false;
+bool GUIManager::light_has_pending_changes = false;
+double GUIManager::pending_light_intensity[3] = {1, 1, 1};
+double GUIManager::pending_light_position_buf[3] = {0, 0, 0};
+double GUIManager::pending_light_reach = -1.0;
+int GUIManager::last_selected_light_index = -999;
 
 void GUIManager::init(double *eye, double *at, double *up, int *proj_type,
                       bool *redraw, bool *blade_shine, bool *is_night,
@@ -75,15 +84,21 @@ void GUIManager::init(double *eye, double *at, double *up, int *proj_type,
 
   cam_pending_loaded = false;
   cam_has_pending_changes = false;
+
+  selected_light_index = 0;
+  light_pending_loaded = false;
+  light_has_pending_changes = false;
+  last_selected_light_index = -999;
 }
 
 void GUIManager::setCallbacks(
     function<void()> cam_change, function<void()> render_req,
     function<void(bool)> blade_toggle, function<void(bool)> day_night_toggle,
     function<void(int)> vp_change,
-    function<bool(const string &, double *, double *, double *)> get_trans,
+    function<bool(const string &, double *, double *, double *, double *)>
+        get_trans,
     function<void(const string &, const double *, const double *,
-                  const double *)>
+                  const double *, const double *)>
         set_trans) {
   on_camera_change = cam_change;
   on_render_request = render_req;
@@ -105,8 +120,6 @@ void GUIManager::show(const string &object_name, const string &material_name,
   selected_normal[0] = nx;
   selected_normal[1] = ny;
   selected_normal[2] = nz;
-  selected_distance = distance;
-  gui_visible = true;
   selected_distance = distance;
   gui_visible = true;
   current_tab = 0;

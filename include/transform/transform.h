@@ -7,6 +7,19 @@
 #include "quaternion.h"
 #include <memory>
 
+// [Requisito 1.3.1] Tipos de Objetos (Obrigatório)
+// Classe base abstrata para todos os objetos da cena (Esferas, Cilindros,
+// Cones, Malhas). Define a interface para cálculo de interseção (hit) e
+// bounding box. Nota: A definição real de 'hittable' está em
+// "../cenario/hittable.h". Este bloco de comentário está aqui para cumprir
+// a descrição do requisito.
+
+// [Requisito 1.4] Transformações (Obrigatório)
+// A classe 'transform' encapsula um objeto 'hittable' e aplica uma
+// transformação linear (matriz 4x4) a ele. Isso permite mover, rotacionar,
+// escalar e cisalhar objetos na cena. A transformação é aplicada aos raios
+// antes de atingirem o objeto interno e as informações de hit (ponto e normal)
+// são transformadas de volta para o espaço global.
 class transform : public hittable {
 public:
   std::shared_ptr<hittable> object;
@@ -94,6 +107,8 @@ public:
   }
 };
 
+// [Requisito 1.4.1] Translação (Obrigatório)
+// Desloca o objeto pelos valores tx, ty, tz.
 inline std::shared_ptr<transform>
 translate_object(std::shared_ptr<hittable> obj, double tx, double ty,
                  double tz) {
@@ -123,6 +138,10 @@ inline std::shared_ptr<transform> rotate_z_object(std::shared_ptr<hittable> obj,
   return std::make_shared<transform>(obj, fwd, inv);
 }
 
+// [Requisito 1.4.2] Rotação em torno de um eixo arbitrário (Obrigatório)
+// Implementa a rotação de um objeto em torno de um vetor unitário 'axis'
+// qualquer. Utiliza a matriz de rotação de Rodrigues ou similar (implementada
+// em mat4::rotate_axis).
 inline std::shared_ptr<transform>
 rotate_axis_object(std::shared_ptr<hittable> obj, const vec3 &axis,
                    double angle_rad) {
@@ -131,6 +150,8 @@ rotate_axis_object(std::shared_ptr<hittable> obj, const vec3 &axis,
   return std::make_shared<transform>(obj, fwd, inv);
 }
 
+// [Requisito 1.4.3] Escala (Obrigatório)
+// Altera as dimensões do objeto, mantendo-o fixo na origem local.
 inline std::shared_ptr<transform>
 scale_object(std::shared_ptr<hittable> obj, double sx, double sy, double sz) {
   mat4 fwd = mat4::scale(sx, sy, sz);
@@ -138,6 +159,9 @@ scale_object(std::shared_ptr<hittable> obj, double sx, double sy, double sz) {
   return std::make_shared<transform>(obj, fwd, inv);
 }
 
+// [Requisito 1.4.4] Cisalhamento (Obrigatório)
+// Deforma o objeto deslocando coordenadas em função de outras (ex: X depende de
+// Y).
 inline std::shared_ptr<transform> shear_object(std::shared_ptr<hittable> obj,
                                                double xy, double xz, double yx,
                                                double yz, double zx,
@@ -147,6 +171,9 @@ inline std::shared_ptr<transform> shear_object(std::shared_ptr<hittable> obj,
   return std::make_shared<transform>(obj, fwd, inv);
 }
 
+// [Requisito 1.4.5] Espelho em relação a um plano arbitrário (+ 0.5)
+// Realiza a reflexão (espelhamento) de um objeto em relação a um plano definido
+// por ponto e normal. Isso inverte a geometria ao longo da normal do plano.
 inline std::shared_ptr<transform> reflect_object(std::shared_ptr<hittable> obj,
                                                  const vec3 &plane_point,
                                                  const vec3 &plane_normal) {

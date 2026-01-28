@@ -23,6 +23,10 @@ struct hit_record {
   }
 };
 
+// [Requisito 1.3.1] Tipos de Objetos (Obrigatório)
+// Classe base abstrata para todos os objetos da cena (Esferas, Cilindros,
+// Cones, Malhas). Define a interface para cálculo de interseção (hit) e
+// bounding box.
 class hittable {
 public:
   virtual ~hittable() = default;

@@ -34,6 +34,7 @@ public:
   static double pending_translation[3];
   static double pending_rotation[3];
   static double pending_scale[3];
+  static double pending_shear[6];
   static bool has_pending_changes;
   static bool pending_values_loaded;
 
@@ -52,10 +53,11 @@ public:
   static int *vanishing_points_preset_ptr;
 
   static std::function<bool(const std::string &, double *trans, double *rot,
-                            double *scale)>
+                            double *scale, double *shear)>
       get_transform_state;
   static std::function<void(const std::string &, const double *trans,
-                            const double *rot, const double *scale)>
+                            const double *rot, const double *scale,
+                            const double *shear)>
       set_transform_state;
 
   static void init(double *eye, double *at, double *up, int *proj_type,
@@ -67,10 +69,11 @@ public:
       std::function<void(bool)> blade_toggle,
       std::function<void(bool)> day_night_toggle,
       std::function<void(int)> vp_change,
-      std::function<bool(const std::string &, double *, double *, double *)>
+      std::function<bool(const std::string &, double *, double *, double *,
+                         double *)>
           get_trans,
       std::function<void(const std::string &, const double *, const double *,
-                         const double *)>
+                         const double *, const double *)>
           set_trans);
 
   static void show(const std::string &object_name,
@@ -96,11 +99,21 @@ private:
 
   static int selected_light_index;
 
+  static bool light_pending_loaded;
+  static bool light_has_pending_changes;
+
+  static double pending_light_intensity[3];
+  static double pending_light_position_buf[3];
+  static double pending_light_reach;
+
+  static int last_selected_light_index;
+
   static void drawObjectTab();
   static void drawCameraTab();
   static void drawProjectionTab();
   static void drawEnvironmentTab();
   static void drawTransformTab();
+  static void drawShearTab();
   static void drawLightingTab();
   static void drawTabs();
 
@@ -109,6 +122,7 @@ private:
   static bool handleProjectionTabClick(int local_x, int local_y);
   static bool handleEnvironmentTabClick(int local_x, int local_y);
   static bool handleTransformTabClick(int local_x, int local_y);
+  static bool handleShearTabClick(int local_x, int local_y);
   static bool handleLightingTabClick(int local_x, int local_y);
 };
 
