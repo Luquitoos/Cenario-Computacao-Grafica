@@ -148,19 +148,18 @@ private:
   }
 
 public:
-  bool bounding_box(aabb& output_box) const override {
-    // Calcula AABB conservadora para cone
+  bool bounding_box(aabb &output_box) const override {
     point3 base_center = apex + height * axis;
     double base_radius = height * std::tan(angle);
-    
+
     double min_x = std::fmin(apex.x(), base_center.x() - base_radius);
     double min_y = std::fmin(apex.y(), base_center.y() - base_radius);
     double min_z = std::fmin(apex.z(), base_center.z() - base_radius);
-    
+
     double max_x = std::fmax(apex.x(), base_center.x() + base_radius);
     double max_y = std::fmax(apex.y(), base_center.y() + base_radius);
     double max_z = std::fmax(apex.z(), base_center.z() + base_radius);
-    
+
     output_box = aabb(point3(min_x, min_y, min_z), point3(max_x, max_y, max_z));
     return true;
   }

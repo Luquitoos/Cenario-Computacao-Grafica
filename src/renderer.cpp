@@ -7,7 +7,6 @@
 
 using namespace std;
 
-// Versão otimizada usando BVH para sombras
 color calculate_lighting_bvh(const hit_record &rec, const ray &r) {
   color result(0, 0, 0);
 
@@ -22,7 +21,7 @@ color calculate_lighting_bvh(const hit_record &rec, const ray &r) {
 
     ray shadow_ray(rec.p + 0.001 * rec.normal, L);
     hit_record shadow_rec;
-    // Usa BVH para teste de sombra (O(log n) ao invés de O(n))
+
     if (scene_bvh.hit(shadow_ray, 0.001, light_dist - 0.001, shadow_rec)) {
       continue;
     }
@@ -41,11 +40,9 @@ color calculate_lighting_bvh(const hit_record &rec, const ray &r) {
   return result.clamp();
 }
 
-// Versão otimizada usando BVH
 color ray_color_bvh(const ray &r) {
   hit_record rec;
 
-  // Usa BVH para hit principal (O(log n) ao invés de O(n))
   if (scene_bvh.hit(r, 0.001, infinity, rec)) {
     return calculate_lighting_bvh(rec, r);
   }
@@ -102,9 +99,10 @@ color ray_color(const ray &r, const hittable_list &world) {
 
 void render() {
   cout << "Renderizando " << IMAGE_WIDTH << "x" << IMAGE_HEIGHT
-       << " pixels (OpenMP: " << omp_get_max_threads() << " threads, BVH ativado)...\n";
+       << " pixels (OpenMP: " << omp_get_max_threads()
+       << " threads, BVH ativado)...\n";
 
-  #pragma omp parallel for schedule(dynamic, 8)
+#pragma omp parallel for schedule(dynamic, 8)
   for (int j = 0; j < IMAGE_HEIGHT; j++) {
     for (int i = 0; i < IMAGE_WIDTH; i++) {
       double u = double(i) / (IMAGE_WIDTH - 1);
@@ -126,13 +124,12 @@ void render() {
   frame_cached = true;
 }
 
-// === OTIMIZAÇÃO: Renderização em baixa resolução para preview rápido ===
 void render_preview() {
   if (!PreviewBuffer) {
     PreviewBuffer = new unsigned char[PREVIEW_WIDTH * PREVIEW_HEIGHT * 3];
   }
 
-  #pragma omp parallel for schedule(dynamic, 4)
+#pragma omp parallel for schedule(dynamic, 4)
   for (int j = 0; j < PREVIEW_HEIGHT; j++) {
     for (int i = 0; i < PREVIEW_WIDTH; i++) {
       double u = double(i) / (PREVIEW_WIDTH - 1);
@@ -149,28 +146,29 @@ void render_preview() {
   }
 }
 
-// === OTIMIZAÇÃO: Expande preview para resolução completa (nearest neighbor) ===
 void upscale_preview() {
-  if (!PreviewBuffer) return;
-  
+  if (!PreviewBuffer)
+    return;
+
   double scale_x = double(PREVIEW_WIDTH) / IMAGE_WIDTH;
   double scale_y = double(PREVIEW_HEIGHT) / IMAGE_HEIGHT;
 
   for (int j = 0; j < IMAGE_HEIGHT; j++) {
     int src_j = int(j * scale_y);
-    if (src_j >= PREVIEW_HEIGHT) src_j = PREVIEW_HEIGHT - 1;
-    
+    if (src_j >= PREVIEW_HEIGHT)
+      src_j = PREVIEW_HEIGHT - 1;
+
     for (int i = 0; i < IMAGE_WIDTH; i++) {
       int src_i = int(i * scale_x);
-      if (src_i >= PREVIEW_WIDTH) src_i = PREVIEW_WIDTH - 1;
-      
+      if (src_i >= PREVIEW_WIDTH)
+        src_i = PREVIEW_WIDTH - 1;
+
       int src_idx = (src_j * PREVIEW_WIDTH + src_i) * 3;
       int dst_idx = (j * IMAGE_WIDTH + i) * 3;
-      
+
       PixelBuffer[dst_idx] = PreviewBuffer[src_idx];
       PixelBuffer[dst_idx + 1] = PreviewBuffer[src_idx + 1];
       PixelBuffer[dst_idx + 2] = PreviewBuffer[src_idx + 2];
     }
   }
 }
-

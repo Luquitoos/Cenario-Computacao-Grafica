@@ -51,10 +51,14 @@ struct TransformState {
 };
 
 extern std::map<std::string, TransformState> object_states;
+extern std::map<std::string, TransformState> initial_object_states;
 extern std::map<std::string, std::shared_ptr<transform>> object_transforms;
 extern std::string selected_transform_name;
 
-// === OTIMIZAÇÃO: Resolução Adaptativa ===
+extern const point3 DEFAULT_CAM_EYE;
+extern const point3 DEFAULT_CAM_AT;
+extern const vec3 DEFAULT_CAM_UP;
+
 extern const int PREVIEW_WIDTH;
 extern const int PREVIEW_HEIGHT;
 extern unsigned char *PreviewBuffer;
@@ -62,7 +66,6 @@ extern bool is_interacting;
 extern bool use_preview;
 extern bool frame_cached;
 
-// === OTIMIZAÇÃO: BVH para aceleração de interseções ===
 #include "cenario/bvh_node.h"
 extern bvh_scene scene_bvh;
 void build_scene_bvh();

@@ -1,3 +1,4 @@
+#include "../../include/globals.h"
 #include "../../include/gui/gui_manager.h"
 #include <iomanip>
 #include <iostream>
@@ -5,8 +6,10 @@
 
 using namespace std;
 
+int GUIManager::selected_light_index = 0;
+
 void GUIManager::drawTabs() {
-  int tab_w = gui_width / 5;
+  int tab_w = gui_width / 6;
   int tab_h = 25;
   int tab_y = gui_y + 25;
 
@@ -20,6 +23,84 @@ void GUIManager::drawTabs() {
 
   drawButton(gui_x + tab_w * 4, tab_y, tab_w, tab_h, "Transf",
              current_tab == 4);
+
+  drawButton(gui_x + tab_w * 5, tab_y, tab_w, tab_h, "Luz", current_tab == 5);
+}
+
+void GUIManager::drawLightingTab() {
+  int content_y = gui_y + 60;
+  int line_height = 20;
+
+  drawText(gui_x + 10, content_y, "=== Gerenciador de Luzes ===", 0.5f, 0.8f,
+           1.0f);
+  content_y += line_height + 5;
+
+  drawText(gui_x + 10, content_y, "Selecione uma luz:", 0.8f, 0.8f, 0.8f);
+  content_y += line_height;
+
+  int btn_h = 20;
+  int lights_per_row = 1;
+  int btn_w = (gui_width - 20) / lights_per_row;
+
+  for (size_t i = 0; i < lights.size(); ++i) {
+    bool is_selected = (static_cast<int>(i) == selected_light_index);
+    string label = lights[i]->name;
+    if (label.empty())
+      label = "Luz " + to_string(i);
+
+    if (!lights[i]->enabled)
+      label += " (OFF)";
+
+    if (content_y + btn_h > gui_y + gui_height - 200)
+      break;
+
+    drawButton(gui_x + 10, content_y, btn_w, btn_h, label, is_selected);
+    content_y += btn_h + 2;
+  }
+
+  content_y += 10;
+  if (selected_light_index >= 0 && selected_light_index < (int)lights.size()) {
+    auto l = lights[selected_light_index];
+
+    string toggle_label = l->enabled ? "Desativar Luz" : "Ativar Luz";
+    drawButton(gui_x + 10, content_y, gui_width - 20, 25, toggle_label,
+               l->enabled);
+    content_y += 30;
+
+    drawText(gui_x + 10, content_y, "Intensidade (RGB):", 0.9f, 0.9f, 0.9f);
+    content_y += line_height;
+
+    stringstream ss_int;
+    ss_int << fixed << setprecision(2) << l->intensity.r << " "
+           << l->intensity.g << " " << l->intensity.b;
+    drawText(gui_x + 10, content_y, ss_int.str(), l->intensity.r,
+             l->intensity.g, l->intensity.b);
+
+    drawSlider(gui_x + 10, content_y + 5, 150, l->intensity.r, 0.0f, 2.0f, "R");
+    content_y += 20;
+    // Green
+    drawSlider(gui_x + 10, content_y + 5, 150, l->intensity.g, 0.0f, 2.0f, "G");
+    content_y += 20;
+    // Blue
+    drawSlider(gui_x + 10, content_y + 5, 150, l->intensity.b, 0.0f, 2.0f, "B");
+    content_y += 25;
+
+    point3 pos = l->get_position();
+
+    if (abs(pos.x()) < 10000 && abs(pos.y()) < 10000 && abs(pos.z()) < 10000) {
+      drawText(gui_x + 10, content_y, "Posicao (X, Y, Z):", 0.9f, 0.9f, 0.9f);
+      content_y += line_height;
+
+      drawSlider(gui_x + 10, content_y + 5, 150, pos.x(), 0.0f, 2000.0f, "X");
+      content_y += 20;
+
+      drawSlider(gui_x + 10, content_y + 5, 150, pos.y(), 0.0f, 1000.0f, "Y");
+      content_y += 20;
+
+      drawSlider(gui_x + 10, content_y + 5, 150, pos.z(), 0.0f, 2000.0f, "Z");
+      content_y += 25;
+    }
+  }
 }
 
 void GUIManager::drawEnvironmentTab() {
@@ -98,6 +179,19 @@ void GUIManager::drawTransformTab() {
 
     drawButton(gui_x + 54, content_y, 22, 18, "+");
 
+    // Sliders for Translation (using drawSlider helper logic visualized)
+    // Assuming drawSlider exists or we use buttons for now as in Transf tab
+    // The visual shows generic sliders.
+    // Re-use logic or just rely on existing Transf tab structure
+    // Wait, Transf tab uses buttons + and -
+    // The user requested a tab where they can "change place" and "increase
+    // intensity with a bar" So "bar" implies slider. I need to ensure
+    // drawSlider implementation exists or logic for it. I see `drawSlider`
+    // declared in header. I will assume it's implemented (I saw it declared in
+    // step 997 but not implemented in file view in step 1001? Wait. Step 1001
+    // showed lines 1-100. Step 1002 lines 400-454. I missed checking if
+    // drawSlider IS implemented. If it's not implemented, I need to implement
+    // it. I'll add `drawSlider` implementation if missing.
     int slider_x = gui_x + 78;
     int slider_w = gui_width - 125;
     drawSlider(slider_x, content_y, slider_w, (float)pending_translation[i],
@@ -136,6 +230,9 @@ void GUIManager::drawTransformTab() {
   } else {
     drawButton(gui_x + 10, content_y, gui_width - 20, 35, "Aplicar");
   }
+
+  content_y += 40;
+  drawButton(gui_x + 10, content_y, gui_width - 20, 30, "Reset Objects");
 }
 
 void GUIManager::drawObjectTab() {
@@ -324,6 +421,10 @@ void GUIManager::drawCameraTab() {
     content_y += line_height + 8;
   }
 
+  // --- Botão Reset Camera ---
+  drawButton(gui_x + 10, content_y, gui_width - 20, 28, "Reset Camera");
+  content_y += 35;
+
   if (cam_has_pending_changes) {
     drawButton(gui_x + 10, content_y, gui_width - 20, 28, "APLICAR", true);
   } else {
@@ -448,6 +549,9 @@ void GUIManager::draw() {
     break;
   case 4:
     drawTransformTab();
+    break;
+  case 5:
+    drawLightingTab();
     break;
   }
 }

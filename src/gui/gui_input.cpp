@@ -1,3 +1,4 @@
+#include "../../include/globals.h"
 #include "../../include/gui/gui_manager.h"
 #include <iostream>
 
@@ -192,6 +193,48 @@ bool GUIManager::handleCameraTabClick(int local_x, int local_y) {
     row_y += line_height + 8;
   } else {
     row_y = up_start_y + line_height + 8;
+  }
+
+  int reset_btn_y = row_y;
+  row_y += 35;
+
+  if (local_y >= reset_btn_y && local_y <= reset_btn_y + 28 && local_x >= 10 &&
+      local_x <= gui_width - 10) {
+
+    pending_eye[0] = DEFAULT_CAM_EYE.x();
+    pending_eye[1] = DEFAULT_CAM_EYE.y();
+    pending_eye[2] = DEFAULT_CAM_EYE.z();
+
+    pending_at[0] = DEFAULT_CAM_AT.x();
+    pending_at[1] = DEFAULT_CAM_AT.y();
+    pending_at[2] = DEFAULT_CAM_AT.z();
+
+    pending_up[0] = DEFAULT_CAM_UP.x();
+    pending_up[1] = DEFAULT_CAM_UP.y();
+    pending_up[2] = DEFAULT_CAM_UP.z();
+
+    cam_eye_ptr[0] = DEFAULT_CAM_EYE.x();
+    cam_eye_ptr[1] = DEFAULT_CAM_EYE.y();
+    cam_eye_ptr[2] = DEFAULT_CAM_EYE.z();
+
+    cam_at_ptr[0] = DEFAULT_CAM_AT.x();
+    cam_at_ptr[1] = DEFAULT_CAM_AT.y();
+    cam_at_ptr[2] = DEFAULT_CAM_AT.z();
+
+    if (cam_up_ptr) {
+      cam_up_ptr[0] = DEFAULT_CAM_UP.x();
+      cam_up_ptr[1] = DEFAULT_CAM_UP.y();
+      cam_up_ptr[2] = DEFAULT_CAM_UP.z();
+    }
+
+    cam_has_pending_changes = false;
+    cout << "[GUI] Camera reset to Factory Defaults.\n";
+
+    if (on_camera_change)
+      on_camera_change();
+    if (on_render_request)
+      on_render_request();
+    return true;
   }
 
   int apply_btn_y = row_y;
@@ -419,6 +462,177 @@ bool GUIManager::handleTransformTabClick(int local_x, int local_y) {
     }
   }
 
+  content_y += 40;
+
+  if (local_y >= content_y && local_y <= content_y + 35) {
+    if (local_x >= 10 && local_x <= gui_width - 10) {
+      cout << "[GUI] Resetting ALL objects to initial state...\n";
+
+      bool any_reset = false;
+
+      for (auto const &[name, initial_state] : initial_object_states) {
+
+        if (object_transforms.find(name) != object_transforms.end()) {
+          object_states[name] = initial_state;
+
+          auto t_obj = object_transforms[name];
+
+          mat4 T = mat4::translate(initial_state.translation.x(),
+                                   initial_state.translation.y(),
+                                   initial_state.translation.z());
+          mat4 Tinv = mat4::translate_inverse(initial_state.translation.x(),
+                                              initial_state.translation.y(),
+                                              initial_state.translation.z());
+
+          mat4 Ry =
+              mat4::rotate_y(degrees_to_radians(initial_state.rotation.y()));
+          mat4 Rx =
+              mat4::rotate_x(degrees_to_radians(initial_state.rotation.x()));
+          mat4 Rz =
+              mat4::rotate_z(degrees_to_radians(initial_state.rotation.z()));
+          mat4 R = Ry * Rx * Rz;
+
+          mat4 Rz_inv = mat4::rotate_z_inverse(
+              degrees_to_radians(initial_state.rotation.z()));
+          mat4 Rx_inv = mat4::rotate_x_inverse(
+              degrees_to_radians(initial_state.rotation.x()));
+          mat4 Ry_inv = mat4::rotate_y_inverse(
+              degrees_to_radians(initial_state.rotation.y()));
+          mat4 Rinv = Rz_inv * Rx_inv * Ry_inv;
+
+          mat4 S = mat4::scale(initial_state.scale.x(), initial_state.scale.y(),
+                               initial_state.scale.z());
+          mat4 Sinv = mat4::scale_inverse(initial_state.scale.x(),
+                                          initial_state.scale.y(),
+                                          initial_state.scale.z());
+
+          t_obj->set_transform(T * R * S, Sinv * Rinv * Tinv);
+          any_reset = true;
+        }
+      }
+
+      if (any_reset) {
+        cout << "[GUI] Objects Reset Successfully.\n";
+
+        if (selected_transform_name_ptr &&
+            !selected_transform_name_ptr->empty()) {
+          pending_values_loaded = false;
+        }
+        if (need_redraw_ptr)
+          *need_redraw_ptr = true;
+      } else {
+        cout << "[GUI] No objects found to reset.\n";
+      }
+      return true;
+    }
+  }
+
+  return false;
+}
+
+bool GUIManager::handleLightingTabClick(int local_x, int local_y) {
+  int content_y = gui_y + 60 + 20 + 5;
+  content_y += 20;
+
+  int btn_h = 20;
+  int lights_per_row = 1;
+  int btn_w = (gui_width - 20) / lights_per_row;
+
+  for (size_t i = 0; i < lights.size(); ++i) {
+    if (content_y + btn_h > gui_y + gui_height - 200)
+      break;
+
+    if (local_y >= content_y && local_y <= content_y + btn_h) {
+      if (local_x >= 10 && local_x <= 10 + btn_w) {
+        selected_light_index = (int)i;
+        if (need_redraw_ptr)
+          *need_redraw_ptr = true;
+        return true;
+      }
+    }
+    content_y += btn_h + 2;
+  }
+
+  content_y += 10;
+  if (selected_light_index >= 0 && selected_light_index < (int)lights.size()) {
+    auto l = lights[selected_light_index];
+    if (local_y >= content_y && local_y <= content_y + 25) {
+      if (local_x >= 10 && local_x <= gui_width - 10) {
+        l->enabled = !l->enabled;
+        if (need_redraw_ptr)
+          *need_redraw_ptr = true;
+        return true;
+      }
+    }
+    content_y += 30;
+
+    content_y += 20;
+    content_y += 20;
+
+    int slider_w = 150;
+    int slider_x = 10;
+
+    auto handleSlider = [&](double &val, float min_v, float max_v,
+                            int cy) -> bool {
+      if (local_y >= cy + 5 && local_y <= cy + 15) {
+        if (local_x >= slider_x && local_x <= slider_x + slider_w) {
+          float ratio = (float)(local_x - slider_x) / (float)slider_w;
+          if (ratio < 0)
+            ratio = 0;
+          if (ratio > 1)
+            ratio = 1;
+          val = min_v + ratio * (max_v - min_v);
+          if (need_redraw_ptr)
+            *need_redraw_ptr = true;
+          return true;
+        }
+      }
+      return false;
+    };
+
+    if (handleSlider(l->intensity.r, 0.0f, 2.0f, content_y))
+      return true;
+    content_y += 20;
+
+    if (handleSlider(l->intensity.g, 0.0f, 2.0f, content_y))
+      return true;
+    content_y += 20;
+
+    if (handleSlider(l->intensity.b, 0.0f, 2.0f, content_y))
+      return true;
+    content_y += 25;
+
+    point3 pos = l->get_position();
+    if (abs(pos.x()) < 10000 && abs(pos.y()) < 10000 && abs(pos.z()) < 10000) {
+      content_y += 20;
+
+      double px = pos.x();
+      double py = pos.y();
+      double pz = pos.z();
+      bool changed = false;
+
+      if (handleSlider(px, 0.0f, 2000.0f, content_y))
+        changed = true;
+      content_y += 20;
+
+      if (handleSlider(py, 0.0f, 1000.0f, content_y))
+        changed = true;
+      content_y += 20;
+
+      if (handleSlider(pz, 0.0f, 2000.0f, content_y))
+        changed = true;
+      content_y += 25;
+
+      if (changed) {
+        l->set_position(point3(px, py, pz));
+
+        if (need_redraw_ptr)
+          *need_redraw_ptr = true;
+        return true;
+      }
+    }
+  }
+
   return false;
 }
 
@@ -438,7 +652,7 @@ bool GUIManager::handleMouseClick(int mouse_x, int mouse_y, int button,
     return true;
   }
 
-  int tab_w = gui_width / 5;
+  int tab_w = gui_width / 6;
   int tab_y = gui_y + 25;
   int tab_h = 25;
 
@@ -459,11 +673,14 @@ bool GUIManager::handleMouseClick(int mouse_x, int mouse_y, int button,
       current_tab = 3;
       gui_height = 320;
       return true;
-    } else if (mouse_x >= gui_x + tab_w * 4 && mouse_x <= gui_x + gui_width) {
+    } else if (mouse_x >= gui_x + tab_w * 4 && mouse_x < gui_x + tab_w * 5) {
       current_tab = 4;
       gui_height = 480;
-
       pending_values_loaded = false;
+      return true;
+    } else if (mouse_x >= gui_x + tab_w * 5 && mouse_x <= gui_x + gui_width) {
+      current_tab = 5;
+      gui_height = 550;
       return true;
     }
   }
@@ -490,6 +707,10 @@ bool GUIManager::handleMouseClick(int mouse_x, int mouse_y, int button,
     break;
   case 4:
     if (handleTransformTabClick(local_x, local_y))
+      return true;
+    break;
+  case 5:
+    if (handleLightingTabClick(local_x, local_y))
       return true;
     break;
   }

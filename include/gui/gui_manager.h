@@ -94,11 +94,14 @@ private:
   static void drawSlider(int x, int y, int w, float value, float min_val,
                          float max_val, const std::string &label);
 
+  static int selected_light_index;
+
   static void drawObjectTab();
   static void drawCameraTab();
   static void drawProjectionTab();
   static void drawEnvironmentTab();
   static void drawTransformTab();
+  static void drawLightingTab();
   static void drawTabs();
 
   static bool handleObjectTabClick(int local_x, int local_y);
@@ -106,6 +109,7 @@ private:
   static bool handleProjectionTabClick(int local_x, int local_y);
   static bool handleEnvironmentTabClick(int local_x, int local_y);
   static bool handleTransformTabClick(int local_x, int local_y);
+  static bool handleLightingTabClick(int local_x, int local_y);
 };
 
 #endif

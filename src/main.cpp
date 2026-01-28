@@ -22,7 +22,7 @@ int main(int argc, char **argv) {
 
   cout << "Criando cena...\n";
   create_scene();
-  
+
   cout << "Construindo BVH para aceleracao...\n";
   build_scene_bvh();
 

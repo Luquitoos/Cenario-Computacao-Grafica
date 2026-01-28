@@ -86,7 +86,7 @@ private:
   }
 
 public:
-  bool bounding_box(aabb& output_box) const override {
+  bool bounding_box(aabb &output_box) const override {
     output_box = aabb(min_corner, max_corner);
     return true;
   }
@@ -184,15 +184,15 @@ public:
   }
 
   std::string get_name() const override { return name; }
-  
-  bool bounding_box(aabb& output_box) const override {
-    // Calcula bounding box de todas as faces
+
+  bool bounding_box(aabb &output_box) const override {
     aabb temp_box;
     bool first = true;
-    for (const auto& obj : faces.objects) {
+    for (const auto &obj : faces.objects) {
       aabb obj_box;
       if (obj->bounding_box(obj_box)) {
-        output_box = first ? obj_box : aabb::surrounding_box(output_box, obj_box);
+        output_box =
+            first ? obj_box : aabb::surrounding_box(output_box, obj_box);
         first = false;
       }
     }

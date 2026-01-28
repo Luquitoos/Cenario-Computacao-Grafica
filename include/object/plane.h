@@ -45,12 +45,8 @@ public:
   }
 
   std::string get_name() const override { return name; }
-  
-  bool bounding_box(aabb& output_box) const override {
-    // Plano infinito não tem bounding box finita
-    // Será tratado separadamente no BVH
-    return false;
-  }
+
+  bool bounding_box(aabb &output_box) const override { return false; }
 };
 
 #endif

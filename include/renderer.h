@@ -10,7 +10,7 @@ color calculate_lighting(const hit_record &rec, const ray &r,
 color ray_color(const ray &r, const hittable_list &world);
 
 void render();
-void render_preview();    // Renderiza em baixa resolução para preview rápido
-void upscale_preview();   // Expande preview para o buffer principal
+void render_preview();
+void upscale_preview();
 
 #endif

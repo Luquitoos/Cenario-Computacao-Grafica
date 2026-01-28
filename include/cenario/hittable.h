@@ -30,9 +30,8 @@ public:
   virtual bool hit(const ray &r, double t_min, double t_max,
                    hit_record &rec) const = 0;
   virtual std::string get_name() const = 0;
-  
-  // Retorna a bounding box do objeto para BVH
-  virtual bool bounding_box(aabb& output_box) const = 0;
+
+  virtual bool bounding_box(aabb &output_box) const = 0;
 };
 
 #endif

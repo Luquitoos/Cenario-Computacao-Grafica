@@ -119,14 +119,20 @@ shared_ptr<class transform> register_transformable(
   mat4 Tinv = mat4::translate_inverse(position.x(), position.y(), position.z());
   mat4 Sinv = mat4::scale_inverse(scale.x(), scale.y(), scale.z());
 
-  auto trans = make_shared<class transform>(obj, T * R * S, Sinv * Rinv * Tinv);
-  trans->name = name;
+  auto t_object =
+      make_shared<class transform>(obj, T * R * S, Sinv * Rinv * Tinv);
+  t_object->name = name;
 
-  world.add(trans);
+  world.add(t_object);
+
+  object_transforms[name] = t_object;
   object_states[name] = state;
-  object_transforms[name] = trans;
 
-  return trans;
+  if (initial_object_states.find(name) == initial_object_states.end()) {
+    initial_object_states[name] = state;
+  }
+
+  return t_object;
 }
 
 void toggle_blade_shine(bool increase) {
@@ -173,28 +179,30 @@ void setup_lighting() {
 
     ambient.intensity = color(0.03, 0.035, 0.06);
 
-    lights.push_back(make_shared<directional_light>(vec3(0, -1, 0),
-                                                    color(0.85, 0.80, 0.70)));
+    lights.push_back(make_shared<directional_light>(
+        vec3(0, -1, 0), color(0.85, 0.80, 0.70), "Directional Light - Moon"));
 
     auto spot_dir = unit_vector(vec3(0.05, -1, 0));
     lights.push_back(make_shared<spot_light>(
         point3(CX, 400, CZ), spot_dir, color(0.3, 0.25, 0.4),
         degrees_to_radians(20), degrees_to_radians(50), 1.0, 0.000008,
-        0.0000005));
+        0.0000005, "Spot Light - Center"));
 
-    lights.push_back(make_shared<point_light>(
-        torch_light_pos, color(1.0, 0.6, 0.2), 2.5, 0.001, 0.00004));
+    lights.push_back(make_shared<point_light>(torch_light_pos,
+                                              color(1.0, 0.6, 0.2), 2.5, 0.001,
+                                              0.00004, "Point Light - Torch"));
 
-    lights.push_back(make_shared<point_light>(
-        point3(WX, 50, WZ), color(0.4, 0.7, 1.0), 0.6, 0.003, 0.00005));
+    lights.push_back(
+        make_shared<point_light>(point3(WX, 50, WZ), color(0.4, 0.7, 1.0), 0.6,
+                                 0.003, 0.00005, "Point Light - Waterfall"));
 
     lights.push_back(make_shared<point_light>(point3(CX - 80, 100, CZ + 80),
                                               color(0.8, 0.5, 0.2), 0.5, 0.001,
-                                              0.0001));
+                                              0.0001, "Point Light - River 1"));
 
     lights.push_back(make_shared<point_light>(point3(CX + 80, 120, CZ - 80),
                                               color(0.2, 0.4, 0.8), 0.4, 0.001,
-                                              0.0001));
+                                              0.0001, "Point Light - River 2"));
 
     sky_color_top = color(0.4, 0.6, 0.9);
     sky_color_bottom = color(0.7, 0.8, 0.95);
@@ -204,23 +212,22 @@ void setup_lighting() {
     ambient.intensity = color(0.3, 0.3, 0.3);
 
     vec3 sun_dir = unit_vector(vec3(1.0, -1.0, -0.5));
-    lights.push_back(
-        make_shared<directional_light>(sun_dir, color(1.0, 0.95, 0.9) * 0.8));
+    lights.push_back(make_shared<directional_light>(
+        sun_dir, color(1.0, 0.95, 0.9) * 0.8, "Directional Light - Sun"));
 
-    lights.push_back(make_shared<point_light>(
-        torch_light_pos, color(1.0, 0.6, 0.2), 0.8, 0.001, 0.00004));
+    lights.push_back(
+        make_shared<point_light>(torch_light_pos, color(1.0, 0.6, 0.2), 0.8,
+                                 0.001, 0.00004, "Point Light - Torch (Day)"));
 
     sky_color_top = color(0.15, 0.2, 0.4);
     sky_color_bottom = color(0.5, 0.4, 0.6);
   }
 }
 
-// ============== ANIMAIS ==============
-
 void remove_animals() {
-  // Remove objetos com nomes de animais
+
   world.remove_by_name_prefix("Animal_");
-  // Limpa luzes dos vagalumes
+
   for (auto &fl : firefly_lights) {
     auto it = std::find(lights.begin(), lights.end(), fl);
     if (it != lights.end()) {
@@ -233,10 +240,7 @@ void remove_animals() {
 void add_day_animals() {
   const double CX = 900.0;
   const double CZ = 900.0;
-  const double WX = 710.0;
-  const double WZ = 1090.0;
 
-  // Materiais para animais
   auto mat_butterfly_body = make_shared<material>(color(0.1, 0.1, 0.1), 0.3,
                                                   0.7, 50.0, "Butterfly Body");
   auto mat_butterfly_wing1 = make_shared<material>(
@@ -251,12 +255,8 @@ void add_day_animals() {
                                               40.0, "Horse Body");
   auto mat_horse_mane = make_shared<material>(color(0.1, 0.05, 0.02), 0.3, 0.4,
                                               30.0, "Horse Mane");
-
-  // === BORBOLETAS GEOMÉTRICAS (3) - Voando ao redor da Espada ===
-  // Espada esta em (CX, 195, CZ). Vamos colocar em volta.
   double sword_y = 195.0;
 
-  // Cores das asas: Vermelho, Rosa, Roxo (Sem Verde)
   auto mat_wing_red =
       make_shared<material>(color(0.9, 0.1, 0.1), 0.2, 0.8, 80.0, "Wing Red");
   auto mat_wing_pink =
@@ -267,31 +267,23 @@ void add_day_animals() {
   shared_ptr<material> wing_mats[] = {mat_wing_red, mat_wing_pink,
                                       mat_wing_purple};
 
-  double butterfly_offsets[][3] = {
-      {30, 40, 20},   // Perto do punho/lamina
-      {-40, 60, -30}, // Mais alto
-      {20, 50, -50}   // Outro lado
-  };
+  double butterfly_offsets[][3] = {{30, 40, 20}, {-40, 60, -30}, {20, 50, -50}};
 
   for (int i = 0; i < 3; i++) {
-    // Posicao relativa a Espada
+
     double bx = CX + butterfly_offsets[i][0];
     double by = sword_y + butterfly_offsets[i][1];
     double bz = CZ + butterfly_offsets[i][2];
 
-    // Angulo base para olhar o centro (ou aleatorio)
     double rot_angle_y = i * 120.0;
 
-    // Inclinacao (Banking) para parecer voo natural
-    // P.ex: inclinar Z (roll) e X (pitch)
     double bank_z = (i % 2 == 0) ? 25.0 : -25.0;
     double pitch_x = 15.0;
 
-    auto wing_mat = wing_mats[i % 3]; // Variar cor
+    auto wing_mat = wing_mats[i % 3];
 
     auto butterfly_parts = make_shared<hittable_list>();
 
-    // 1. Corpo (Cilindro Fino e Antenas)
     auto body_mesh =
         make_shared<cylinder>(point3(0, -2, 0), vec3(0, 1, 0), 0.4, 5,
                               mat_butterfly_body, "Butterfly Body");
@@ -300,7 +292,6 @@ void add_day_animals() {
     butterfly_parts->add(
         make_shared<class transform>(body_mesh, body_base_T, body_base_Tinv));
 
-    // Antenas
     auto ant_mesh =
         make_shared<cylinder>(point3(0, 0, 0), vec3(0, 1, 0.5), 0.1, 1.5,
                               mat_butterfly_body, "Butterfly Antenna");
@@ -309,20 +300,16 @@ void add_day_animals() {
     butterfly_parts->add(
         translate_object(make_shared<cylinder>(*ant_mesh), 0.3, 2.5, 1));
 
-    // 2. Asas (Geometricas)
-    // Asa superior base
     auto wing_up_mesh = make_shared<box_mesh>(
         point3(0, 0, -0.1), point3(5, 4, 0.1), wing_mat, "Butterfly Wing Up");
     mat4 shear_U = mat4::shear(0.5, 0, 0, 0, 0, 0);
     mat4 shear_Uinv = mat4::shear_inverse(0.5, 0, 0, 0, 0, 0);
 
-    // Asa inferior base
     auto wing_low_mesh = make_shared<box_mesh>(
         point3(0, -3, -0.1), point3(3, 0, 0.1), wing_mat, "Butterfly Wing Low");
     mat4 shear_L = mat4::shear(-0.2, 0, 0, 0, 0, 0);
     mat4 shear_Linv = mat4::shear_inverse(-0.2, 0, 0, 0, 0, 0);
 
-    // Lado DIREITO (X+)
     auto wing_R_Group = make_shared<hittable_list>();
     wing_R_Group->add(
         make_shared<class transform>(wing_up_mesh, shear_U, shear_Uinv));
@@ -333,7 +320,6 @@ void add_day_animals() {
     butterfly_parts->add(make_shared<class transform>(
         wing_R_Group, wing_R_Final, wing_R_FinalInv));
 
-    // Lado ESQUERDO (X-)
     auto wing_up_mesh_L =
         make_shared<box_mesh>(point3(-5, 0, -0.1), point3(0, 4, 0.1), wing_mat,
                               "Butterfly Wing Up L");
@@ -356,66 +342,35 @@ void add_day_animals() {
     butterfly_parts->add(make_shared<class transform>(
         wing_L_Group, wing_L_Final, wing_L_FinalInv));
 
-    // === Transformação FINAL para o Mundo ===
-    mat4 w_T = mat4::translate(bx, by, bz);
-    mat4 w_Tinv = mat4::translate_inverse(bx, by, bz);
-
-    // Rotacao Combinada (Y + Pitch/Roll para voo)
-    mat4 w_R_Y = mat4::rotate_y(degrees_to_radians(rot_angle_y));
-    mat4 w_R_Pitch =
-        mat4::rotate_x(degrees_to_radians(pitch_x)); // Inclina pra frente/tras
-    mat4 w_R_Roll =
-        mat4::rotate_z(degrees_to_radians(bank_z)); // Inclina lateralmente
-
-    // Ordem: Roll -> Pitch -> Y (Yaw)
-    mat4 w_R = w_R_Y * w_R_Pitch * w_R_Roll;
-    mat4 w_Rinv = mat4::rotate_z_inverse(degrees_to_radians(bank_z)) *
-                  mat4::rotate_x_inverse(degrees_to_radians(pitch_x)) *
-                  mat4::rotate_y_inverse(degrees_to_radians(rot_angle_y));
-
     double sc = 1.0 + random_double(-0.1, 0.1);
-    mat4 w_S = mat4::scale(sc, sc, sc);
-    mat4 w_Sinv = mat4::scale_inverse(sc, sc, sc);
-
-    world.add(make_shared<class transform>(butterfly_parts, w_T * w_R * w_S,
-                                           w_Sinv * w_Rinv * w_Tinv));
+    register_transformable(
+        butterfly_parts, "Butterfly_Wings_" + to_string(i + 1),
+        vec3(bx, by, bz), vec3(pitch_x, rot_angle_y, bank_z), vec3(sc, sc, sc));
   }
 
-  // === COELHOS GEOMÉTRICOS (5) ===
-  // Movemos para raio ~230-240 para evitar colisao com Lake Rocks (que vao ate
-  // ~210) [X, Z] apenas, direcao calculada dinamicamente
-  double rabbit_pos[][2] = {
-      {928.844, 682.594},   // (Ex-Leste) Solicitado pelo usuario
-      {CX - 230, CZ},       // Oeste
-      {CX, CZ + 230},       // Sul
-      {CX + 165, CZ - 165}, // Nordeste
-      {834.44, 687.431}     // (Ex-Cachoeira) Solicitado pelo usuario
-  };
+  double rabbit_pos[][2] = {{928.844, 682.594},
+                            {CX - 230, CZ},
+                            {CX, CZ + 230},
+                            {CX + 165, CZ - 165},
+                            {834.44, 687.431}};
 
   for (int i = 0; i < 5; i++) {
     double rx = rabbit_pos[i][0];
     double rz = rabbit_pos[i][1];
 
-    // Calcular rotação para olhar para o centro do lago (CX, CZ)
-    // Vetor Rabbit -> Lake
     double dx = CX - rx;
     double dz = CZ - rz;
-    // Normalizar nao é estritamente necessario para atan2, mas ajuda na clareza
-    // atan2(x, z) pois Z+ é "Forward" no modelo base?
-    // Modelo base olha Z+, entao queremos rotacionar para alinhar Z+ com (dx,
-    // dz)
+
     double angle_rad = atan2(dx, dz);
 
     auto rabbit_parts = make_shared<hittable_list>();
 
-    // 1. Corpo (Principal) - Inclinado (Sentado)
-    // Usar uma esfera alongada ou cilindro
     auto body_mesh =
         make_shared<sphere>(point3(0, 0, 0), 9, mat_rabbit, "Rabbit Body Main");
-    // Escalar para ser oval
+
     mat4 body_S = mat4::scale(0.8, 1.0, 1.4);
     mat4 body_Sinv = mat4::scale_inverse(0.8, 1.0, 1.4);
-    // Ergue a traseira um pouco (Sentado/Alerta)
+
     mat4 body_R = mat4::rotate_x(degrees_to_radians(-20));
     mat4 body_Rinv = mat4::rotate_x_inverse(degrees_to_radians(-20));
     mat4 body_T = mat4::translate(0, 10, 0);
@@ -424,62 +379,48 @@ void add_day_animals() {
         make_shared<class transform>(body_mesh, body_T * body_R * body_S,
                                      body_Sinv * body_Rinv * body_Tinv));
 
-    // 2. Coxas Traseiras (Grandes, laterais)
-    // Esferas achatadas nas laterais traseiras
     auto thigh_mesh =
         make_shared<sphere>(point3(0, 0, 0), 7, mat_rabbit, "Rabbit Thigh");
     mat4 thigh_S = mat4::scale(0.6, 1.2, 1.2);
     mat4 thigh_Sinv = mat4::scale_inverse(0.6, 1.2, 1.2);
-    // Coxa Esq
+
     mat4 thigh_L_T = mat4::translate(-6, 8, -5);
     mat4 thigh_L_Tinv = mat4::translate_inverse(-6, 8, -5);
     rabbit_parts->add(make_shared<class transform>(
         thigh_mesh, thigh_L_T * thigh_S, thigh_Sinv * thigh_L_Tinv));
-    // Coxa Dir
+
     mat4 thigh_R_T = mat4::translate(6, 8, -5);
     mat4 thigh_R_Tinv = mat4::translate_inverse(6, 8, -5);
     rabbit_parts->add(make_shared<class transform>(
         thigh_mesh, thigh_R_T * thigh_S, thigh_Sinv * thigh_R_Tinv));
 
-    // 3. Peito/Pescoço
     auto chest =
         make_shared<sphere>(point3(0, 14, 8), 6, mat_rabbit, "Rabbit Chest");
     rabbit_parts->add(chest);
 
-    // 4. Cabeça (Geométrica)
-    // Usar esfera menor como base, mais alta
     auto head_mesh =
         make_shared<sphere>(point3(0, 0, 0), 6.5, mat_rabbit, "Rabbit Head");
-    mat4 head_T = mat4::translate(0, 24, 12); // Mais alto e para frente
+    mat4 head_T = mat4::translate(0, 24, 12);
     mat4 head_Tinv = mat4::translate_inverse(0, 24, 12);
     rabbit_parts->add(
         make_shared<class transform>(head_mesh, head_T, head_Tinv));
 
-    // Focinho (Cone apontando para frente/baixo)
     auto snout = cone::from_base(point3(0, 0, 0), vec3(0, -0.2, 1), 3.5, 7,
                                  mat_rabbit, "Rabbit Snout");
     rabbit_parts->add(translate_object(make_shared<cone>(snout), 0, 23, 16));
 
-    // 5. Orelhas (No TOPO da cabeça - Parallelogramas)
-    // Centro da cabeça em (0, 24, 12), Raio 6.5. Topo ~ (0, 30.5, 12)
-    // Usar Box Mesh + Shear para fazer paralelogramo
-    // Box: base (2.0 x 12 x 1.2) - Mais grossas
     auto ear_mesh_base =
         make_shared<box_mesh>(point3(-1.0, 0, -0.6), point3(1.0, 12, 0.6),
                               mat_rabbit, "Rabbit Ear Mesh");
 
-    // Shear para "Paralelogramo" - Inclinar X com Y
-    mat4 ear_shear = mat4::shear(0.3, 0, 0, 0, 0, 0); // X aumenta com Y
+    mat4 ear_shear = mat4::shear(0.3, 0, 0, 0, 0, 0);
     mat4 ear_shearinv = mat4::shear_inverse(0.3, 0, 0, 0, 0, 0);
 
-    // Orelha Esq
-    // Rotacionar para trás (-X) e inclinar (Z-)
-    mat4 ear_L_R =
-        mat4::rotate_z(degrees_to_radians(25)) *
-        mat4::rotate_x(degrees_to_radians(-20)); // Abre pra esq e pra tras
+    mat4 ear_L_R = mat4::rotate_z(degrees_to_radians(25)) *
+                   mat4::rotate_x(degrees_to_radians(-20));
     mat4 ear_L_Rinv = mat4::rotate_x_inverse(degrees_to_radians(-20)) *
                       mat4::rotate_z_inverse(degrees_to_radians(25));
-    // Translate para o topo da cabeça
+
     mat4 ear_L_T = mat4::translate(-2.5, 30, 11);
     mat4 ear_L_Tinv = mat4::translate_inverse(-2.5, 30, 11);
 
@@ -487,10 +428,8 @@ void add_day_animals() {
         ear_mesh_base, ear_L_T * ear_L_R * ear_shear,
         ear_shearinv * ear_L_Rinv * ear_L_Tinv));
 
-    // Orelha Dir
-    mat4 ear_R_R =
-        mat4::rotate_z(degrees_to_radians(-25)) *
-        mat4::rotate_x(degrees_to_radians(-20)); // Abre pra dir e pra tras
+    mat4 ear_R_R = mat4::rotate_z(degrees_to_radians(-25)) *
+                   mat4::rotate_x(degrees_to_radians(-20));
     mat4 ear_R_Rinv = mat4::rotate_x_inverse(degrees_to_radians(-20)) *
                       mat4::rotate_z_inverse(degrees_to_radians(-25));
     mat4 ear_R_T = mat4::translate(2.5, 30, 11);
@@ -500,41 +439,23 @@ void add_day_animals() {
         ear_mesh_base, ear_R_T * ear_R_R * ear_shear,
         ear_shearinv * ear_R_Rinv * ear_R_Tinv));
 
-    // 6. Patas Dianteiras (Inclinadas como no origami)
     auto leg_front =
         make_shared<cylinder>(point3(0, 0, 0), vec3(0, -1, 0.3), 1.5, 14,
                               mat_rabbit, "Rabbit Front Leg");
-    rabbit_parts->add(translate_object(make_shared<cylinder>(*leg_front), -3.0,
-                                       15, 11)); // Esq
-    rabbit_parts->add(translate_object(make_shared<cylinder>(*leg_front), 3.0,
-                                       15, 11)); // Dir
+    rabbit_parts->add(
+        translate_object(make_shared<cylinder>(*leg_front), -3.0, 15, 11));
+    rabbit_parts->add(
+        translate_object(make_shared<cylinder>(*leg_front), 3.0, 15, 11));
 
-    // 7. Cauda (Pompom geometrico)
     rabbit_parts->add(
         make_shared<sphere>(point3(0, 8, -9), 3.5, mat_rabbit, "Rabbit Tail"));
 
-    // === Transformação Final para o Mundo ===
-    // Posiciona em (rx, 0, rz) e Rotaciona pelo angulo
-
-    mat4 world_T = mat4::translate(rx, 0, rz);
-    mat4 world_Tinv = mat4::translate_inverse(rx, 0, rz);
-    mat4 world_R = mat4::rotate_y(angle_rad);
-    mat4 world_Rinv = mat4::rotate_y_inverse(angle_rad);
-
-    // Scale global se necessário (Coelho pequeno)
-    // O modelo foi feito em unidades ~20-30 de altura. Está ok.
-
-    // Ordem: T * R * (LocalModel)
-    auto final_rabbit = make_shared<class transform>(
-        rabbit_parts, world_T * world_R, world_Rinv * world_Tinv);
-    final_rabbit->name = "Animal_Rabbit_Geo_" + to_string(i + 1);
-
-    world.add(final_rabbit);
+    double angle_deg = radians_to_degrees(angle_rad);
+    register_transformable(
+        rabbit_parts, "Animal_Rabbit_Geometric_" + to_string(i + 1),
+        vec3(rx, 0, rz), vec3(0, angle_deg, 0), vec3(1, 1, 1));
   }
 
-  // === PÁSSAROS GEOMÉTRICOS (Origami Style) (4) - Area Especifica e Cores ===
-
-  // Cores: Marrom, Branco (Pontas), Preto (Bico/Olhos)
   auto mat_bird_brown = make_shared<material>(color(0.5, 0.35, 0.2), 0.3, 0.5,
                                               40.0, "Bird Brown");
   auto mat_bird_white =
@@ -542,22 +463,10 @@ void add_day_animals() {
   auto mat_bird_black =
       make_shared<material>(color(0.1, 0.1, 0.1), 0.1, 0.1, 10.0, "Bird Black");
 
-  // Pontos limitantes fornecidos (aprox):
-  // P1(1098, 0, 820), P2(735, 0, 686), P3(804, 53, 846), P4(1120, 0, 948)
-  // Vamos usar esses pontos como ancoras para os 4 passaros, com altura
-  // ajustada para voo. User deu altura 0 ou 53. Se estao voando, devem estar
-  // mais altos? O prompt anterior dizia "voando pela cena". Vou colocar alturas
-  // de voo (150-250) sobre esses pontos X,Z. Ou o user quer que fiquem
-  // POUSEADOS nessas coordenadas exatas? "Posicione os passaros na area
-  // delimitada de..." sugere voar NA AREA. Vou manter voo alto sobre essa area
-  // XZ.
-
-  double bird_positions[][3] = {
-      {1098.42, 220, 819.919},
-      {734.744, 250, 686.032},
-      {804.178, 200, 845.856}, // Esse ponto tinha Y=53, talvez um voo rasante?
-                               // Vou por 200 padrao p/ garantir visibilidade
-      {1120.82, 230, 947.773}};
+  double bird_positions[][3] = {{1098.42, 220, 819.919},
+                                {734.744, 250, 686.032},
+                                {804.178, 200, 845.856},
+                                {1120.82, 230, 947.773}};
 
   for (int i = 0; i < 4; i++) {
     double px = bird_positions[i][0];
@@ -567,38 +476,30 @@ void add_day_animals() {
 
     auto bird_parts = make_shared<hittable_list>();
 
-    // 1. Corpo (Marrom)
     auto body_mesh = make_shared<box_mesh>(point3(-3, -2, -6), point3(3, 2, 6),
                                            mat_bird_brown, "Bird Body");
     mat4 body_R = mat4::rotate_x(degrees_to_radians(10));
     mat4 body_Rinv = mat4::rotate_x_inverse(degrees_to_radians(10));
     bird_parts->add(make_shared<class transform>(body_mesh, body_R, body_Rinv));
 
-    // Detalhe Branco (Barra/Barriga)
-    // Box achatado embaixo
     auto belly_mesh =
         make_shared<box_mesh>(point3(-2.5, -2.2, -5), point3(2.5, -1.8, 5),
                               mat_bird_white, "Bird Belly");
-    bird_parts->add(make_shared<class transform>(
-        belly_mesh, body_R, body_Rinv)); // Segue rotacao corpo
+    bird_parts->add(
+        make_shared<class transform>(belly_mesh, body_R, body_Rinv));
 
-    // 2. Asas (Marrom base + Ponta Branca)
-    // Geometria Base da Asa
     auto wing_base_geo = make_shared<box_mesh>(
         point3(0, 0, -3), point3(8, 1, 4), mat_bird_brown, "Wing Base");
-    auto wing_tip_geo =
-        make_shared<box_mesh>(point3(8, 0, -3), point3(12, 1, 4),
-                              mat_bird_white, "Wing Tip"); // Ponta branca
+    auto wing_tip_geo = make_shared<box_mesh>(
+        point3(8, 0, -3), point3(12, 1, 4), mat_bird_white, "Wing Tip");
 
     mat4 wing_shear = mat4::shear(0, 0, 0.5, 0, 0, 0);
     mat4 wing_shearinv = mat4::shear_inverse(0, 0, 0.5, 0, 0, 0);
 
-    // Grupo Asa (Base + Ponta)
     auto wing_comp = make_shared<hittable_list>();
     wing_comp->add(wing_base_geo);
     wing_comp->add(wing_tip_geo);
 
-    // Asa Esq
     mat4 wing_L_T = mat4::translate(-2, 1, 0);
     mat4 wing_L_Tinv = mat4::translate_inverse(-2, 1, 0);
     mat4 wing_L_R = mat4::rotate_z(degrees_to_radians(20)) *
@@ -609,7 +510,6 @@ void add_day_animals() {
         wing_comp, wing_L_T * wing_L_R * wing_shear,
         wing_shearinv * wing_L_Rinv * wing_L_Tinv));
 
-    // Asa Dir
     mat4 wing_R_T = mat4::translate(2, 1, 0);
     mat4 wing_R_Tinv = mat4::translate_inverse(2, 1, 0);
     mat4 wing_R_R = mat4::rotate_z(degrees_to_radians(-20));
@@ -618,7 +518,6 @@ void add_day_animals() {
         wing_comp, wing_R_T * wing_R_R * wing_shear,
         wing_shearinv * wing_R_Rinv * wing_R_Tinv));
 
-    // 3. Cauda (Marrom com ponta branca?)
     auto tail_mesh = make_shared<box_mesh>(
         point3(-2.5, 0, 0), point3(2.5, 1, 6), mat_bird_brown, "Bird Tail");
     mat4 tail_T = mat4::translate(0, 1, -5);
@@ -630,15 +529,12 @@ void add_day_animals() {
     bird_parts->add(make_shared<class transform>(tail_mesh, tail_T * tail_R,
                                                  tail_Rinv * tail_Tinv));
 
-    // 4. Cabeça (Marrom), Bico (Preto), Olhos (Preto)
-    // Cabeca
     auto head_mesh = make_shared<box_mesh>(
         point3(-2, -2, -2.5), point3(2, 2, 2.5), mat_bird_brown, "Bird Head");
     mat4 head_T = mat4::translate(0, 2, 7);
     mat4 head_Tinv = mat4::translate_inverse(0, 2, 7);
     bird_parts->add(make_shared<class transform>(head_mesh, head_T, head_Tinv));
 
-    // Bico (Preto)
     auto beak_mesh = make_shared<cone>(point3(0, 0, 0), vec3(0, 0, 1), 1.0, 3.0,
                                        mat_bird_black, "Bird Beak");
     mat4 beak_R = mat4::rotate_x(degrees_to_radians(90));
@@ -648,57 +544,196 @@ void add_day_animals() {
     bird_parts->add(make_shared<class transform>(beak_mesh, beak_T * beak_R,
                                                  beak_Rinv * beak_Tinv));
 
-    // Olhos (Esferas Pretas)
     auto eye_mesh =
         make_shared<sphere>(point3(0, 0, 0), 0.8, mat_bird_black, "Bird Eye");
-    // Olho Esq
     bird_parts->add(
         translate_object(make_shared<sphere>(*eye_mesh), -2.1, 3, 8));
-    // Olho Dir
     bird_parts->add(
         translate_object(make_shared<sphere>(*eye_mesh), 2.1, 3, 8));
 
-    // === Transformação Final ===
-    mat4 w_T = mat4::translate(px, py, pz);
-    mat4 w_Tinv = mat4::translate_inverse(px, py, pz);
-    mat4 w_R = mat4::rotate_y(degrees_to_radians(rot_y));
-    mat4 w_Rinv = mat4::rotate_y_inverse(degrees_to_radians(rot_y));
-
     double bank = random_double(-15, 15);
-    mat4 w_R_Bank = mat4::rotate_z(degrees_to_radians(bank));
-    mat4 w_R_BankInv = mat4::rotate_z_inverse(degrees_to_radians(bank));
-
-    world.add(make_shared<class transform>(bird_parts, w_T * w_R * w_R_Bank,
-                                           w_R_BankInv * w_Rinv * w_Tinv));
+    register_transformable(bird_parts, "Bird_Brown_" + to_string(i + 1),
+                           vec3(px, py, pz), vec3(0, rot_y, bank),
+                           vec3(1, 1, 1));
   }
 
-  // === CAVALO - perto da cachoeira ===
-  double hx = WX - 60, hy = 5, hz = WZ + 50;
-  // Corpo
-  world.add(make_shared<sphere>(point3(hx, hy + 35, hz), 30, mat_horse_body,
-                                "Animal_Horse_Body"));
-  // Pescoço (cilindro inclinado simulado)
-  world.add(make_shared<cylinder>(point3(hx + 25, hy + 45, hz), vec3(0.5, 1, 0),
-                                  8, 35, mat_horse_body, "Animal_Horse_Neck"));
-  // Cabeça
-  world.add(make_shared<sphere>(point3(hx + 40, hy + 75, hz), 12,
-                                mat_horse_body, "Animal_Horse_Head"));
-  // Focinho
-  world.add(make_shared<sphere>(point3(hx + 52, hy + 70, hz), 6, mat_horse_body,
-                                "Animal_Horse_Snout"));
-  // Pernas (4)
-  world.add(make_shared<cylinder>(point3(hx - 15, hy, hz - 12), vec3(0, 1, 0),
-                                  4, 30, mat_horse_body, "Animal_Horse_Leg"));
-  world.add(make_shared<cylinder>(point3(hx - 15, hy, hz + 12), vec3(0, 1, 0),
-                                  4, 30, mat_horse_body, "Animal_Horse_Leg"));
-  world.add(make_shared<cylinder>(point3(hx + 15, hy, hz - 12), vec3(0, 1, 0),
-                                  4, 30, mat_horse_body, "Animal_Horse_Leg"));
-  world.add(make_shared<cylinder>(point3(hx + 15, hy, hz + 12), vec3(0, 1, 0),
-                                  4, 30, mat_horse_body, "Animal_Horse_Leg"));
-  // Cauda
-  world.add(make_shared<cylinder>(point3(hx - 30, hy + 35, hz),
-                                  vec3(-1, -0.5, 0), 3, 25, mat_horse_mane,
-                                  "Animal_Horse_Tail"));
+  {
+    double horse_geo_x = 1034.48;
+    double horse_geo_z = 1084.61;
+    double horse_geo_y = 12.0;
+
+    double dx = 900.0 - horse_geo_x;
+    double dz = 900.0 - horse_geo_z;
+    double horse_angle = atan2(dx, dz);
+
+    auto mat_horse_geo_body = make_shared<material>(
+        color(0.95, 0.95, 0.95), 0.2, 0.3, 10.0, "Horse Origami Body");
+    auto mat_horse_geo_mane = make_shared<material>(
+        color(0.3, 0.2, 0.15), 0.2, 0.3, 10.0, "Horse Origami Dark");
+
+    auto horse_parts = make_shared<hittable_list>();
+
+    auto chest_mesh =
+        make_shared<box_mesh>(point3(-8, -8, -10), point3(8, 12, 10),
+                              mat_horse_geo_body, "Horse Chest");
+    mat4 chest_R = mat4::rotate_x(degrees_to_radians(-15));
+    mat4 chest_Rinv = mat4::rotate_x_inverse(degrees_to_radians(-15));
+    mat4 chest_T = mat4::translate(0, 15, 10);
+    mat4 chest_Tinv = mat4::translate_inverse(0, 15, 10);
+    horse_parts->add(make_shared<class transform>(chest_mesh, chest_T * chest_R,
+                                                  chest_Rinv * chest_Tinv));
+
+    auto flank_mesh =
+        make_shared<box_mesh>(point3(-7, -7, -10), point3(7, 10, 10),
+                              mat_horse_geo_body, "Horse Flank");
+    mat4 flank_T = mat4::translate(0, 14, -8);
+    mat4 flank_Tinv = mat4::translate_inverse(0, 14, -8);
+    horse_parts->add(
+        make_shared<class transform>(flank_mesh, flank_T, flank_Tinv));
+
+    auto neck_mesh = make_shared<box_mesh>(point3(-4, 0, -5), point3(4, 25, 5),
+                                           mat_horse_geo_body, "Horse Neck");
+    mat4 neck_T = mat4::translate(0, 22, 15);
+    mat4 neck_Tinv = mat4::translate_inverse(0, 22, 15);
+    mat4 neck_R = mat4::rotate_x(degrees_to_radians(-30));
+    mat4 neck_Rinv = mat4::rotate_x_inverse(degrees_to_radians(-30));
+    horse_parts->add(make_shared<class transform>(neck_mesh, neck_T * neck_R,
+                                                  neck_Rinv * neck_Tinv));
+
+    auto head_mesh =
+        make_shared<box_mesh>(point3(-3.5, 0, -6), point3(3.5, 8, 14),
+                              mat_horse_geo_body, "Horse Head");
+
+    mat4 head_T = mat4::translate(0, 43, 3);
+    mat4 head_Tinv = mat4::translate_inverse(0, 43, 3);
+
+    mat4 head_R = mat4::rotate_x(degrees_to_radians(20));
+    mat4 head_Rinv = mat4::rotate_x_inverse(degrees_to_radians(20));
+    horse_parts->add(make_shared<class transform>(head_mesh, head_T * head_R,
+                                                  head_Rinv * head_Tinv));
+
+    auto ear_mesh = make_shared<box_mesh>(point3(-1, 0, -1), point3(1, 4, 1),
+                                          mat_horse_geo_body, "Horse Ear");
+
+    // mat4 ear_offset = mat4::translate(-2.5, 8, -4); // Unused
+    // mat4 ear_offset = mat4::translate(-2.5, 8, -4); // Unused
+    {
+      mat4 ear_L_T = mat4::translate(-2.5, 8, -4);
+      mat4 ear_R_T = mat4::translate(2.5, 8, -4);
+      mat4 ear_Rot = mat4::rotate_x(degrees_to_radians(-20));
+
+      auto ears_group = make_shared<hittable_list>();
+      ears_group->add(make_shared<class transform>(
+          ear_mesh, ear_L_T * ear_Rot,
+          mat4::rotate_x_inverse(degrees_to_radians(-20)) *
+              mat4::translate_inverse(-2.5, 8, -4)));
+      ears_group->add(make_shared<class transform>(
+          ear_mesh, ear_R_T * ear_Rot,
+          mat4::rotate_x_inverse(degrees_to_radians(-20)) *
+              mat4::translate_inverse(2.5, 8, -4)));
+
+      horse_parts->add(make_shared<class transform>(ears_group, head_T * head_R,
+                                                    head_Rinv * head_Tinv));
+    }
+
+    auto thigh_mesh =
+        make_shared<box_mesh>(point3(-3, -12, -3), point3(3, 0, 3),
+                              mat_horse_geo_body, "Horse Thigh");
+    auto shin_mesh =
+        make_shared<box_mesh>(point3(-2.5, -12, -2.5), point3(2.5, 0, 2.5),
+                              mat_horse_geo_body, "Horse Shin");
+
+    mat4 to_knee = mat4::translate(0, -12, 0);
+    mat4 from_knee = mat4::translate_inverse(0, -12, 0);
+
+    {
+      mat4 hip_T = mat4::translate(-8, 15, 18);
+      mat4 thigh_R = mat4::rotate_x(degrees_to_radians(-60));
+      mat4 shin_R = mat4::rotate_x(degrees_to_radians(110));
+
+      auto leg_group = make_shared<hittable_list>();
+      leg_group->add(make_shared<class transform>(
+          thigh_mesh, thigh_R,
+          mat4::rotate_x_inverse(degrees_to_radians(-60))));
+
+      mat4 s_M = thigh_R * to_knee * shin_R;
+      mat4 s_Minv = mat4::rotate_x_inverse(degrees_to_radians(110)) *
+                    from_knee * mat4::rotate_x_inverse(degrees_to_radians(-60));
+      leg_group->add(make_shared<class transform>(shin_mesh, s_M, s_Minv));
+
+      horse_parts->add(make_shared<class transform>(
+          leg_group, hip_T, mat4::translate_inverse(-8, 15, 18)));
+    }
+
+    {
+      mat4 hip_T = mat4::translate(8, 15, 18);
+      mat4 thigh_R = mat4::rotate_x(degrees_to_radians(0));
+      mat4 shin_R = mat4::rotate_x(degrees_to_radians(0));
+
+      auto leg_group = make_shared<hittable_list>();
+      leg_group->add(make_shared<class transform>(
+          thigh_mesh, thigh_R, mat4::rotate_x_inverse(degrees_to_radians(0))));
+
+      mat4 s_M = thigh_R * to_knee * shin_R;
+      mat4 s_Minv = mat4::rotate_x_inverse(degrees_to_radians(0)) * from_knee *
+                    mat4::rotate_x_inverse(degrees_to_radians(0));
+      leg_group->add(make_shared<class transform>(shin_mesh, s_M, s_Minv));
+
+      horse_parts->add(make_shared<class transform>(
+          leg_group, hip_T, mat4::translate_inverse(8, 15, 18)));
+    }
+
+    {
+      mat4 hip_T = mat4::translate(-8, 14, -15);
+      mat4 thigh_R = mat4::rotate_x(degrees_to_radians(15));
+      mat4 shin_R = mat4::rotate_x(degrees_to_radians(-25));
+
+      auto leg_group = make_shared<hittable_list>();
+      leg_group->add(make_shared<class transform>(
+          thigh_mesh, thigh_R, mat4::rotate_x_inverse(degrees_to_radians(15))));
+
+      mat4 s_M = thigh_R * to_knee * shin_R;
+      mat4 s_Minv = mat4::rotate_x_inverse(degrees_to_radians(-25)) *
+                    from_knee * mat4::rotate_x_inverse(degrees_to_radians(15));
+      leg_group->add(make_shared<class transform>(shin_mesh, s_M, s_Minv));
+
+      horse_parts->add(make_shared<class transform>(
+          leg_group, hip_T, mat4::translate_inverse(-8, 14, -15)));
+    }
+
+    {
+      mat4 hip_T = mat4::translate(8, 14, -15);
+      mat4 thigh_R = mat4::rotate_x(degrees_to_radians(5));
+      mat4 shin_R = mat4::rotate_x(degrees_to_radians(-15));
+
+      auto leg_group = make_shared<hittable_list>();
+      leg_group->add(make_shared<class transform>(
+          thigh_mesh, thigh_R, mat4::rotate_x_inverse(degrees_to_radians(5))));
+
+      mat4 s_M = thigh_R * to_knee * shin_R;
+      mat4 s_Minv = mat4::rotate_x_inverse(degrees_to_radians(-15)) *
+                    from_knee * mat4::rotate_x_inverse(degrees_to_radians(5));
+      leg_group->add(make_shared<class transform>(shin_mesh, s_M, s_Minv));
+
+      horse_parts->add(make_shared<class transform>(
+          leg_group, hip_T, mat4::translate_inverse(8, 14, -15)));
+    }
+
+    auto tail_geo = make_shared<box_mesh>(point3(-2, 0, -2), point3(2, 12, 2),
+                                          mat_horse_geo_mane, "Horse Tail");
+    mat4 tail_T = mat4::translate(0, 18, -12);
+    mat4 tail_R = mat4::rotate_x(degrees_to_radians(-45));
+    horse_parts->add(make_shared<class transform>(
+        tail_geo, tail_T * tail_R,
+        mat4::rotate_x_inverse(degrees_to_radians(-45)) *
+            mat4::translate_inverse(0, 18, -12)));
+
+    double horse_angle_deg = radians_to_degrees(horse_angle);
+
+    register_transformable(horse_parts, "Animal_Horse_Geometric",
+                           vec3(horse_geo_x, horse_geo_y, horse_geo_z),
+                           vec3(0, horse_angle_deg, 0), vec3(1.8, 1.8, 1.8));
+  }
 
   cout << "[Animais] Animais DIURNOS adicionados\n";
 }
@@ -706,17 +741,11 @@ void add_day_animals() {
 void add_night_animals() {
   const double CX = 900.0;
   const double CZ = 900.0;
-  const double WX = 710.0;
-  const double WZ = 1090.0;
 
-  // Materiais para animais noturnos
-  // Vagalume (luz)
   auto mat_firefly_light = make_shared<material>(color(0.8, 0.9, 0.3), 0.1, 0.9,
                                                  100.0, "Firefly Light");
-  mat_firefly_light->emission =
-      color(0.5, 0.6, 0.2); // Emissão para brilho próprio
+  mat_firefly_light->emission = color(0.5, 0.6, 0.2);
 
-  // Vagalume (corpo preto)
   auto mat_firefly_body = make_shared<material>(color(0.05, 0.05, 0.05), 0.1,
                                                 0.1, 10.0, "Firefly Body");
 
@@ -725,104 +754,84 @@ void add_night_animals() {
   auto mat_bear =
       make_shared<material>(color(0.3, 0.2, 0.15), 0.5, 0.4, 30.0, "Bear Fur");
 
-  // === VAGALUMES (20) com luzes e corpo preto ===
   for (int i = 0; i < 20; i++) {
-    double fx = CX + random_double(-250, 250);
-    double fy = random_double(30, 150);
-    double fz = CZ + random_double(-250, 250);
+    double firefly_x = CX + random_double(-250, 250);
+    double firefly_y = random_double(30, 150);
+    double firefly_z = CZ + random_double(-250, 250);
 
-    // Luz do vagalume (bunda) - Esfera luminosa
-    world.add(make_shared<sphere>(point3(fx, fy, fz), 2, mat_firefly_light,
-                                  "Animal_Firefly_Light"));
+    auto firefly_visuals = make_shared<hittable_list>();
+    firefly_visuals->add(make_shared<sphere>(
+        point3(0, 0, 0), 2, mat_firefly_light, "Animal_Firefly_Light"));
+    firefly_visuals->add(make_shared<sphere>(
+        point3(1.5, 0.5, 1.5), 1.5, mat_firefly_body, "Animal_Firefly_Body"));
 
-    // Corpo do vagalume (cabeça preta) - Esfera pequena ao lado da luz
-    world.add(make_shared<sphere>(point3(fx + 1.5, fy + 0.5, fz + 1.5), 1.5,
-                                  mat_firefly_body, "Animal_Firefly_Body"));
+    register_transformable(
+        firefly_visuals, "Animal_Firefly_Geometric_" + to_string(i + 1),
+        vec3(firefly_x, firefly_y, firefly_z), vec3(0, 0, 0), vec3(1, 1, 1));
 
-    // Luz do vagalume (amarelo/verde)
     double r = random_double(0.3, 0.5);
     double g = random_double(0.5, 0.7);
     double b = random_double(0.1, 0.2);
-    auto firefly_light =
-        make_shared<point_light>(point3(fx, fy, fz), color(r, g, b),
-                                 0.3,  // intensidade base
-                                 0.05, // atenuação linear alta
-                                 0.005 // atenuação quadrática
-        );
+    auto firefly_light = make_shared<point_light>(
+        point3(firefly_x, firefly_y, firefly_z), color(r, g, b), 0.3, 0.05,
+        0.005, "Point Light - Firefly " + to_string(i + 1));
     lights.push_back(firefly_light);
     firefly_lights.push_back(firefly_light);
   }
 
-  // === ALCATEIA DE LOBOS (3) - Olhando para o Stream Lake ===
-  // Posição do líder
   double leader_x = 833.7;
   double leader_z = 685.8;
 
-  // Vetor direção para o lago (900, 900)
-  // V = (900 - 833.7, 900 - 685.8) = (66.3, 214.2)
-  // Normalizado approx: (0.3, 0.95)
   double wdx = 0.3;
   double wdz = 0.95;
-  // Vetor lateral (perpendicular à direita)
+
   double wrx = wdz;
   double wrz = -wdx;
+  (void)wrx;
+  (void)wrz;
 
-  // Offsets para os 3 lobos: Líder, Esq, Dir
   struct WolfOffset {
     double off_x, off_z;
   };
-  WolfOffset wolves[] = {
-      {0, 0},     // Líder
-      {-25, -20}, // Seguidor esquerda
-      {25, -20}   // Seguidor direita
-  };
+  WolfOffset wolves[] = {{0, 0}, {-25, -20}, {25, -20}};
 
   for (int i = 0; i < 3; i++) {
-    // === LOBO GEOMÉTRICO (Em pé e Alerta) ===
-    // Posição base do lobo atual
+
     double base_x = leader_x + wolves[i].off_x;
     double base_z = leader_z + wolves[i].off_z;
-    double ly = 12.0; // Altura do chão até o peito
+    double ly = 12.0;
 
     auto wolf_parts = make_shared<hittable_list>();
 
-    // 1. Torso (Dividido em Peito e Flanco para dar forma)
-    // Peito (Mais largo na frente)
     auto chest_mesh = make_shared<box_mesh>(point3(-5, -5, -8), point3(5, 7, 8),
                                             mat_wolf, "Wolf Chest");
-    mat4 chest_T = mat4::translate(0, 0, 5); // Levemente a frente
+    mat4 chest_T = mat4::translate(0, 0, 5);
     mat4 chest_Tinv = mat4::translate_inverse(0, 0, 5);
-    // Inclinar peito para cima um pouco? Nao, reto para estar "Alerta/Em pe"
     wolf_parts->add(
         make_shared<class transform>(chest_mesh, chest_T, chest_Tinv));
 
-    // Flanco (Traseira, mais fina)
     auto flank_mesh = make_shared<box_mesh>(point3(-4, -4, -7), point3(4, 6, 7),
                                             mat_wolf, "Wolf Flank");
-    mat4 flank_T = mat4::translate(0, 1, -8); // Atras e levemente acima
+    mat4 flank_T = mat4::translate(0, 1, -8);
     mat4 flank_Tinv = mat4::translate_inverse(0, 1, -8);
     wolf_parts->add(
         make_shared<class transform>(flank_mesh, flank_T, flank_Tinv));
 
-    // 2. Pescoço (Longo e inclinado para frente/cima)
     auto neck_mesh = make_shared<box_mesh>(point3(-3, 0, -3), point3(3, 10, 3),
                                            mat_wolf, "Wolf Neck");
     mat4 neck_T = mat4::translate(0, 5, 10);
     mat4 neck_Tinv = mat4::translate_inverse(0, 5, 10);
-    mat4 neck_R = mat4::rotate_x(degrees_to_radians(-40)); // Inclina 40 graus
+    mat4 neck_R = mat4::rotate_x(degrees_to_radians(-40));
     mat4 neck_Rinv = mat4::rotate_x_inverse(degrees_to_radians(-40));
     wolf_parts->add(make_shared<class transform>(neck_mesh, neck_T * neck_R,
                                                  neck_Rinv * neck_Tinv));
 
-    // 3. Cabeça (Geométrica)
-    // Cranio
     auto head_mesh = make_shared<box_mesh>(point3(-4, -3, -4), point3(4, 5, 4),
                                            mat_wolf, "Wolf Head");
     mat4 head_T = mat4::translate(0, 14, 16);
     mat4 head_Tinv = mat4::translate_inverse(0, 14, 16);
     wolf_parts->add(make_shared<class transform>(head_mesh, head_T, head_Tinv));
 
-    // Focinho (Prisma Tapered - simulado com box menor)
     auto snout_mesh = make_shared<box_mesh>(
         point3(-2, -1.5, 0), point3(2, 2.5, 6), mat_wolf, "Wolf Snout");
     mat4 snout_T = mat4::translate(0, 14, 19);
@@ -830,41 +839,36 @@ void add_night_animals() {
     wolf_parts->add(
         make_shared<class transform>(snout_mesh, snout_T, snout_Tinv));
 
-    // Orelhas (Triangulares/Sheared)
     auto ear_mesh = make_shared<box_mesh>(
         point3(-1.5, 0, -1), point3(1.5, 5, 1), mat_wolf, "Wolf Ear");
-    mat4 ear_shear =
-        mat4::shear(0, 0, 0, 0, 0.4, 0); // Z aumenta com Y (Inclina pra tras)
+    mat4 ear_shear = mat4::shear(0, 0, 0, 0, 0.4, 0);
     mat4 ear_shearinv = mat4::shear_inverse(0, 0, 0, 0, 0.4, 0);
-    // Esq
+
     mat4 ear_L_T = mat4::translate(-2.5, 19, 17);
     mat4 ear_L_Tinv = mat4::translate_inverse(-2.5, 19, 17);
     wolf_parts->add(make_shared<class transform>(ear_mesh, ear_L_T * ear_shear,
                                                  ear_shearinv * ear_L_Tinv));
-    // Dir
+
     mat4 ear_R_T = mat4::translate(2.5, 19, 17);
     mat4 ear_R_Tinv = mat4::translate_inverse(2.5, 19, 17);
     wolf_parts->add(make_shared<class transform>(ear_mesh, ear_R_T * ear_shear,
                                                  ear_shearinv * ear_R_Tinv));
 
-    // 4. Pernas (Articuladas)
     auto leg_upper = make_shared<box_mesh>(point3(-2, -6, -2), point3(2, 2, 2),
                                            mat_wolf, "Wolf Leg Upper");
     auto leg_lower =
         make_shared<box_mesh>(point3(-1.5, -8, -1.5), point3(1.5, 0, 1.5),
                               mat_wolf, "Wolf Leg Lower");
 
-    // Dianteira Esq
     mat4 leg_FL_T = mat4::translate(-4, 0, 10);
     mat4 leg_FL_Tinv = mat4::translate_inverse(-4, 0, 10);
-    wolf_parts->add(make_shared<class transform>(leg_upper, leg_FL_T,
-                                                 leg_FL_Tinv)); // Coxa reta
+    wolf_parts->add(
+        make_shared<class transform>(leg_upper, leg_FL_T, leg_FL_Tinv));
     mat4 leg_FL_Low_T = mat4::translate(-4, -6, 10);
     mat4 leg_FL_Low_Tinv = mat4::translate_inverse(-4, -6, 10);
-    wolf_parts->add(make_shared<class transform>(
-        leg_lower, leg_FL_Low_T, leg_FL_Low_Tinv)); // Canela reta
+    wolf_parts->add(
+        make_shared<class transform>(leg_lower, leg_FL_Low_T, leg_FL_Low_Tinv));
 
-    // Dianteira Dir
     mat4 leg_FR_T = mat4::translate(4, 0, 10);
     mat4 leg_FR_Tinv = mat4::translate_inverse(4, 0, 10);
     wolf_parts->add(
@@ -874,15 +878,13 @@ void add_night_animals() {
     wolf_parts->add(
         make_shared<class transform>(leg_lower, leg_FR_Low_T, leg_FR_Low_Tinv));
 
-    // Traseira Esq (Joelho para tras)
     mat4 leg_BL_T = mat4::translate(-3.5, 0, -12);
     mat4 leg_BL_Tinv = mat4::translate_inverse(-3.5, 0, -12);
-    mat4 leg_BL_R = mat4::rotate_x(degrees_to_radians(15)); // Coxa pra tras
+    mat4 leg_BL_R = mat4::rotate_x(degrees_to_radians(15));
     mat4 leg_BL_Rinv = mat4::rotate_x_inverse(degrees_to_radians(15));
     wolf_parts->add(make_shared<class transform>(leg_upper, leg_BL_T * leg_BL_R,
                                                  leg_BL_Rinv * leg_BL_Tinv));
 
-    // Canela Traseira (Angulada para frente - Hock joint)
     mat4 leg_BL_Low_T = mat4::translate(-3.5, -5.5, -13);
     mat4 leg_BL_Low_Tinv = mat4::translate_inverse(-3.5, -5.5, -13);
     mat4 leg_BL_Low_R = mat4::rotate_x(degrees_to_radians(-20));
@@ -891,12 +893,10 @@ void add_night_animals() {
         make_shared<class transform>(leg_lower, leg_BL_Low_T * leg_BL_Low_R,
                                      leg_BL_Low_Rinv * leg_BL_Low_Tinv));
 
-    // Traseira Dir
     mat4 leg_BR_T = mat4::translate(3.5, 0, -12);
     mat4 leg_BR_Tinv = mat4::translate_inverse(3.5, 0, -12);
-    wolf_parts->add(make_shared<class transform>(
-        leg_upper, leg_BR_T * leg_BL_R,
-        leg_BL_Rinv * leg_BR_Tinv)); // Recicla rotacao
+    wolf_parts->add(make_shared<class transform>(leg_upper, leg_BR_T * leg_BL_R,
+                                                 leg_BL_Rinv * leg_BR_Tinv));
 
     mat4 leg_BR_Low_T = mat4::translate(3.5, -5.5, -13);
     mat4 leg_BR_Low_Tinv = mat4::translate_inverse(3.5, -5.5, -13);
@@ -904,88 +904,64 @@ void add_night_animals() {
         make_shared<class transform>(leg_lower, leg_BR_Low_T * leg_BL_Low_R,
                                      leg_BL_Low_Rinv * leg_BR_Low_Tinv));
 
-    // 5. Cauda (Caida)
     auto tail_mesh = make_shared<box_mesh>(
         point3(-1.5, -8, -1.5), point3(1.5, 0, 1.5), mat_wolf, "Wolf Tail");
     mat4 tail_T = mat4::translate(0, 3, -14);
     mat4 tail_Tinv = mat4::translate_inverse(0, 3, -14);
-    mat4 tail_R = mat4::rotate_x(degrees_to_radians(30)); // Pra tras/baixo
+    mat4 tail_R = mat4::rotate_x(degrees_to_radians(30));
     mat4 tail_Rinv = mat4::rotate_x_inverse(degrees_to_radians(30));
     wolf_parts->add(make_shared<class transform>(tail_mesh, tail_T * tail_R,
                                                  tail_Rinv * tail_Tinv));
 
-    // === Transformação FINAL para o Mundo ===
-    mat4 w_T = mat4::translate(base_x, ly, base_z);
-    mat4 w_Tinv = mat4::translate_inverse(base_x, ly, base_z);
-
-    // Calcular angulo para o lago
-    // O modelo base foi construido +Z (Frente). Mas a posicao diz wdx, wdz como
-    // vetor direcao
     double wolf_angle = atan2(wdx, wdz);
-    mat4 w_R = mat4::rotate_y(wolf_angle);
-    mat4 w_Rinv = mat4::rotate_y_inverse(wolf_angle);
+    double wolf_angle_deg = radians_to_degrees(wolf_angle);
 
-    mat4 w_S = mat4::scale(1.2, 1.2, 1.2);
-    mat4 w_Sinv = mat4::scale_inverse(1.2, 1.2, 1.2);
-
-    auto final_wolf = make_shared<class transform>(wolf_parts, w_T * w_R * w_S,
-                                                   w_Sinv * w_Rinv * w_Tinv);
-    final_wolf->name = "Animal_Wolf_Geometric";
-    world.add(final_wolf);
+    register_transformable(wolf_parts,
+                           "Animal_Wolf_Geometric_" + to_string(i + 1),
+                           vec3(base_x, ly, base_z), vec3(0, wolf_angle_deg, 0),
+                           vec3(1.2, 1.2, 1.2));
   }
 
-  // === URSO GEOMÉTRICO (Sentado e Low Poly) ===
-  // Posição solicitada: (973.894, 8.09958, 1106.82)
   double ux = 973.894;
-  double uy = 8.09958 + 2; // Ajuste leve para o chao
+  double uy = 8.09958 + 2;
   double uz = 1106.82;
 
-  // Vetor direção para o lago (900, 900)
-  // V = (900 - 973.8, 900 - 1106.8) = (-73.8, -206.8)
-  // Vetor direção para o lago (900, 900)
-  // V = (900 - 973.8, 900 - 1106.8) = (-73.8, -206.8)
   double udx = -0.33;
   double udz = -0.94;
-  // Vetor lateral (perpendicular à direita) necessário para as tochas
+
   double urx = udz;
   double urz = -udx;
 
-  double bear_angle = atan2(udx, udz); // Rotacao Y
+  double bear_angle = atan2(udx, udz);
 
   auto bear_parts = make_shared<hittable_list>();
 
-  // 1. Corpo Central (Tronco - Box Grande)
-  // Formato meio trapezoidal (usando shear ou scale)
   auto body_mesh = make_shared<box_mesh>(
       point3(-25, 0, -20), point3(25, 60, 20), mat_bear, "Bear Body Main");
-  // Inclinar levemente para frente
+
   mat4 body_R = mat4::rotate_x(degrees_to_radians(10));
   mat4 body_Rinv = mat4::rotate_x_inverse(degrees_to_radians(10));
   bear_parts->add(make_shared<class transform>(body_mesh, body_R, body_Rinv));
 
-  // 2. Corcunda (Ombros - Box Superior)
   auto hump_mesh = make_shared<box_mesh>(
       point3(-18, 50, -15), point3(18, 70, 15), mat_bear, "Bear Hump");
-  // Posicionar nas costas
+
   mat4 hump_T = mat4::translate(0, 0, -5);
   mat4 hump_Tinv = mat4::translate_inverse(0, 0, -5);
   bear_parts->add(make_shared<class transform>(hump_mesh, hump_T, hump_Tinv));
 
-  // 3. Pernas Traseiras (Sentadas - Coxas grandes laterais)
-  // Box achatado e rotacionado
   auto thigh_mesh = make_shared<box_mesh>(
       point3(-10, 0, -20), point3(10, 45, 10), mat_bear, "Bear Thigh");
-  // Coxa Esq
+
   mat4 thigh_L_T = mat4::translate(-30, 0, -5);
   mat4 thigh_L_Tinv = mat4::translate_inverse(-30, 0, -5);
   mat4 thigh_L_R = mat4::rotate_z(degrees_to_radians(15)) *
-                   mat4::rotate_x(degrees_to_radians(-30)); // Abre e inclina
+                   mat4::rotate_x(degrees_to_radians(-30));
   mat4 thigh_L_Rinv = mat4::rotate_x_inverse(degrees_to_radians(-30)) *
                       mat4::rotate_z_inverse(degrees_to_radians(15));
   bear_parts->add(make_shared<class transform>(
       thigh_mesh, thigh_L_T * thigh_L_R, thigh_L_Rinv * thigh_L_Tinv));
 
-  // Coxa Dir
   mat4 thigh_R_T = mat4::translate(30, 0, -5);
   mat4 thigh_R_Tinv = mat4::translate_inverse(30, 0, -5);
   mat4 thigh_R_R = mat4::rotate_z(degrees_to_radians(-15)) *
@@ -995,17 +971,16 @@ void add_night_animals() {
   bear_parts->add(make_shared<class transform>(
       thigh_mesh, thigh_R_T * thigh_R_R, thigh_R_Rinv * thigh_R_Tinv));
 
-  // Pés Traseiros
   auto foot_mesh = make_shared<box_mesh>(point3(-8, 0, -12), point3(8, 6, 12),
                                          mat_bear, "Bear Foot");
-  // Esq
+
   mat4 foot_L_T = mat4::translate(-35, 0, 20);
   mat4 foot_L_Tinv = mat4::translate_inverse(-35, 0, 20);
-  mat4 foot_L_R = mat4::rotate_y(degrees_to_radians(-20)); // Aponta pra fora
+  mat4 foot_L_R = mat4::rotate_y(degrees_to_radians(-20));
   mat4 foot_L_Rinv = mat4::rotate_y_inverse(degrees_to_radians(-20));
   bear_parts->add(make_shared<class transform>(foot_mesh, foot_L_T * foot_L_R,
                                                foot_L_Rinv * foot_L_Tinv));
-  // Dir
+
   mat4 foot_R_T = mat4::translate(35, 0, 20);
   mat4 foot_R_Tinv = mat4::translate_inverse(35, 0, 20);
   mat4 foot_R_R = mat4::rotate_y(degrees_to_radians(20));
@@ -1013,78 +988,62 @@ void add_night_animals() {
   bear_parts->add(make_shared<class transform>(foot_mesh, foot_R_T * foot_R_R,
                                                foot_R_Rinv * foot_R_Tinv));
 
-  // 4. Pernas Dianteiras (Colunas retas de apoio)
   auto arm_mesh = make_shared<box_mesh>(point3(-7, 0, -7), point3(7, 45, 7),
                                         mat_bear, "Bear Arm");
-  // Esq
+
   mat4 arm_L_T = mat4::translate(-18, 0, 25);
   mat4 arm_L_Tinv = mat4::translate_inverse(-18, 0, 25);
   bear_parts->add(make_shared<class transform>(arm_mesh, arm_L_T, arm_L_Tinv));
-  // Dir
+
   mat4 arm_R_T = mat4::translate(18, 0, 25);
   mat4 arm_R_Tinv = mat4::translate_inverse(18, 0, 25);
   bear_parts->add(make_shared<class transform>(arm_mesh, arm_R_T, arm_R_Tinv));
 
-  // 5. Cabeça (Box Geométrico)
   auto head_base = make_shared<box_mesh>(
       point3(-14, -12, -14), point3(14, 12, 14), mat_bear, "Bear Head Base");
   mat4 head_T = mat4::translate(0, 65, 25);
   mat4 head_Tinv = mat4::translate_inverse(0, 65, 25);
   bear_parts->add(make_shared<class transform>(head_base, head_T, head_Tinv));
 
-  // Focinho (Box menor na frente)
   auto snout_box = make_shared<box_mesh>(point3(-8, -6, 0), point3(8, 6, 12),
                                          mat_bear, "Bear Snout");
   mat4 snout_T = mat4::translate(0, 60, 39);
   mat4 snout_Tinv = mat4::translate_inverse(0, 60, 39);
   bear_parts->add(make_shared<class transform>(snout_box, snout_T, snout_Tinv));
 
-  // Orelhas (Pequenas piramides/boxes)
   auto bear_ear = make_shared<box_mesh>(point3(-4, 0, -2), point3(4, 6, 2),
                                         mat_bear, "Bear Ear");
-  // Esq
+
   mat4 bear_ear_L_T = mat4::translate(-12, 77, 20);
   mat4 bear_ear_L_Tinv = mat4::translate_inverse(-12, 77, 20);
   bear_parts->add(
       make_shared<class transform>(bear_ear, bear_ear_L_T, bear_ear_L_Tinv));
-  // Dir
+
   mat4 bear_ear_R_T = mat4::translate(12, 77, 20);
   mat4 bear_ear_R_Tinv = mat4::translate_inverse(12, 77, 20);
   bear_parts->add(
       make_shared<class transform>(bear_ear, bear_ear_R_T, bear_ear_R_Tinv));
 
-  // === Transformação FINAL para o Mundo ===
-  mat4 w_T = mat4::translate(ux, uy, uz);
-  mat4 w_Tinv = mat4::translate_inverse(ux, uy, uz);
-  mat4 w_R = mat4::rotate_y(bear_angle);
-  mat4 w_Rinv = mat4::rotate_y_inverse(bear_angle);
+  double bear_angle_deg = radians_to_degrees(bear_angle);
 
-  // Escala se necessário (Urso deve ser GRANDE)
-  mat4 w_S = mat4::scale(1.5, 1.5, 1.5);
-  mat4 w_Sinv = mat4::scale_inverse(1.5, 1.5, 1.5);
+  register_transformable(bear_parts, "Animal_Bear_Geometric", vec3(ux, uy, uz),
+                         vec3(0, bear_angle_deg, 0), vec3(1.5, 1.5, 1.5));
 
-  auto final_bear = make_shared<class transform>(bear_parts, w_T * w_R * w_S,
-                                                 w_Sinv * w_Rinv * w_Tinv);
-  final_bear->name = "Animal_Bear_Geometric";
-  world.add(final_bear);
-
-  // === TOCHAS MEDIEVAIS TIPO LANTERNA (Ao lado do Urso) ===
-  // Materiais das Tochas
   auto mat_torch_flame = make_shared<material>(color(1.0, 0.55, 0.1), 0.95,
                                                0.25, 8.0, "Torch Flame");
   auto mat_torch_core = make_shared<material>(color(1.0, 0.85, 0.2), 0.98, 0.15,
                                               4.0, "Torch Core");
   auto mat_torch_pole = make_shared<material>(color(0.25, 0.15, 0.08), 0.12,
                                               0.04, 4.0, "Torch Pole");
-  // Material de ferro escuro para a grade
+
   auto mat_iron = make_shared<material>(color(0.15, 0.15, 0.18), 0.2, 0.3, 20.0,
                                         "Lantern Iron");
 
-  double torch_dist = 90.0; // Distância lateral
-  // Posições P1 = P + Right*dist, P2 = P - Right*dist
+  double torch_dist = 90.0;
+
   double t_pos[][2] = {{ux + urx * torch_dist, uz + urz * torch_dist},
                        {ux - urx * torch_dist, uz - urz * torch_dist}};
-  double POLE_HEIGHT = 50.0; // Altura BEM menor
+  double POLE_HEIGHT = 50.0;
 
   for (int i = 0; i < 2; i++) {
     double tx = t_pos[i][0];
@@ -1092,27 +1051,21 @@ void add_night_animals() {
 
     auto torch_parts = make_shared<hittable_list>();
 
-    // 1. Poste (Mais curto)
     torch_parts->add(make_shared<cylinder>(point3(0, 0, 0), vec3(0, 1, 0), 4,
                                            POLE_HEIGHT, mat_torch_pole,
                                            "Animal_Lantern_Pole"));
 
-    // 2. Base da Lanterna (Copo)
-    // CylinderBaseStart = POLE_HEIGHT
-    // CylinderBaseHeight = 4
     torch_parts->add(make_shared<cylinder>(point3(0, POLE_HEIGHT, 0),
                                            vec3(0, 1, 0), 12, 4, mat_iron,
                                            "Animal_Lantern_Base"));
 
-    // 3. Grades (4 Barras verticais)
-    // Starts ON TOP of Base (POLE_HEIGHT + 4)
     double lantern_base_h = 4.0;
     double cage_start_y = POLE_HEIGHT + lantern_base_h;
     double cage_h = 25.0;
     double cage_r = 10.0;
 
     for (int k = 0; k < 4; k++) {
-      double ang = k * (pi / 2.0); // 0, 90, 180, 270
+      double ang = k * (pi / 2.0);
       double bx = cage_r * cos(ang);
       double bz = cage_r * sin(ang);
       torch_parts->add(make_shared<cylinder>(point3(bx, cage_start_y, bz),
@@ -1120,22 +1073,16 @@ void add_night_animals() {
                                              mat_iron, "Animal_Lantern_Bar"));
     }
 
-    // 4. Topo da Lanterna (Tampa)
-    // Starts ON TOP of Cage (cage_start_y + cage_h)
     double cap_start_y = cage_start_y + cage_h;
     torch_parts->add(make_shared<cylinder>(point3(0, cap_start_y, 0),
                                            vec3(0, 1, 0), 13, 3, mat_iron,
                                            "Animal_Lantern_Cap_Base"));
 
-    // Telhado cônico pequeno
-    // Starts ON TOP of Cap Base (cap_start_y + 3)
     auto cap_cone = cone::from_base(point3(0, 0, 0), vec3(0, 1, 0), 14, 8,
                                     mat_iron, "Animal_Lantern_Cap_Roof");
     torch_parts->add(
         translate_object(make_shared<cone>(cap_cone), 0, cap_start_y + 3, 0));
 
-    // 5. Chama (Dentro da grade)
-    // Starts ON TOP of Lantern Base (cage_start_y)
     auto flame_outer =
         cone::from_base(point3(0, 0, 0), vec3(0, 1, 0), 8, 20, mat_torch_flame,
                         "Animal_Lantern_Flame_Outer");
@@ -1148,21 +1095,14 @@ void add_night_animals() {
     torch_parts->add(translate_object(make_shared<cone>(flame_inner), 0,
                                       cage_start_y + 1, 0));
 
-    // Transform position
-    mat4 t_T = mat4::translate(tx, 0, tz);
-    mat4 t_Tinv = mat4::translate_inverse(tx, 0, tz);
-    auto t_trans = make_shared<class transform>(torch_parts, t_T, t_Tinv);
-    t_trans->name = "Animal_Lantern_" + to_string(i + 1);
+    auto t_trans = register_transformable(
+        torch_parts, "Animal_Lantern_" + to_string(i + 1), vec3(tx, 0, tz));
+
     world.add(t_trans);
 
-    // Light Source (Laranja Vivido)
-    // Posição: Centro da grade -> cage_start_y + (cage_h / 2)
-    auto torch_light = make_shared<point_light>(
-        point3(tx, cage_start_y + (cage_h * 0.5), tz), color(1.0, 0.6, 0.2),
-        2.5,    // Intensidade
-        0.001,  // Atenuação linear
-        0.00004 // Atenuação quadrática
-    );
+    auto torch_light =
+        make_shared<point_light>(point3(tx, cage_start_y + (cage_h * 0.5), tz),
+                                 color(1.0, 0.6, 0.2), 2.5, 0.001, 0.00004);
     lights.push_back(torch_light);
     firefly_lights.push_back(torch_light);
   }
@@ -1181,6 +1121,8 @@ void toggle_day_night(bool set_to_night) {
   } else {
     add_night_animals();
   }
+
+  build_scene_bvh();
 
   cout << "[Ambiente] Modo alterado para: " << (is_night_mode ? "DIA" : "NOITE")
        << "\n";
@@ -1202,17 +1144,17 @@ void apply_vanishing_point_preset(int preset) {
     break;
 
   case 1:
-    cam_eye = point3(SWORD_X, SWORD_Y + 40, SWORD_Z - 130);
+    cam_eye = point3(SWORD_X, SWORD_Y, SWORD_Z - 130);
     cam_at = sword_center;
     cam_up = vec3(0, 1, 0);
     cout << "[Perspectiva] 1 PONTO DE FUGA - Vista frontal\n";
     break;
 
   case 2:
-    cam_eye = point3(SWORD_X + 60, SWORD_Y + 220, SWORD_Z - 80);
+    cam_eye = point3(SWORD_X + 60, SWORD_Y, SWORD_Z - 80);
     cam_at = sword_center;
     cam_up = vec3(0, 1, 0);
-    cout << "[Perspectiva] 2 PONTOS DE FUGA - Vista de cima\n";
+    cout << "[Perspectiva] 2 PONTOS DE FUGA - Vista diagonal\n";
     break;
 
   case 3:
@@ -1607,8 +1549,6 @@ void create_scene() {
   object_states[sword_name] = sword_state;
   object_transforms[sword_name] = sword_transform;
 
-  // Registrar os quaternions como transformáveis individuais
-  // Eles fazem parte da espada mas podem ser transformados separadamente
   if (auto trans = dynamic_pointer_cast<class transform>(sapphire_transform)) {
     TransformState sapphire_state;
     sapphire_state.translation = vec3(-30, 0, 0);
@@ -1795,7 +1735,6 @@ void create_scene() {
 
   setup_camera();
 
-  // Adiciona animais iniciais (invertido para corresponder à lógica dia/noite)
   if (!is_night_mode) {
     add_night_animals();
   } else {

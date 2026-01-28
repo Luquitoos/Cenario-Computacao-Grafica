@@ -33,10 +33,14 @@ vec3 cam_up(0, 1, 0);
 double cam_speed = 30.0;
 
 map<string, TransformState> object_states;
+map<string, TransformState> initial_object_states;
 map<string, shared_ptr<class transform>> object_transforms;
 string selected_transform_name = "";
 
-// === OTIMIZAÇÃO: Resolução Adaptativa ===
+const point3 DEFAULT_CAM_EYE(1050, 200, 750);
+const point3 DEFAULT_CAM_AT(900, 100, 900);
+const vec3 DEFAULT_CAM_UP(0, 1, 0);
+
 const int PREVIEW_WIDTH = 200;
 const int PREVIEW_HEIGHT = 200;
 unsigned char *PreviewBuffer = nullptr;
@@ -44,10 +48,6 @@ bool is_interacting = false;
 bool use_preview = false;
 bool frame_cached = false;
 
-// === OTIMIZAÇÃO: BVH Scene ===
 bvh_scene scene_bvh;
 
-void build_scene_bvh() {
-  scene_bvh.build(world.objects);
-}
-
+void build_scene_bvh() { scene_bvh.build(world.objects); }

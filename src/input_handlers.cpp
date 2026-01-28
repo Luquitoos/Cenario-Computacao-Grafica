@@ -163,12 +163,11 @@ void perform_pick(int mouse_x, int mouse_y) {
   cout << "==========================\n";
 }
 
-// === Timer callback para refinamento após parar de interagir ===
 static int refine_timer_id = 0;
 
 void refine_timer_callback(int value) {
   if (value == refine_timer_id && is_interacting) {
-    // Usuario parou de interagir, renderizar em alta resolução
+
     is_interacting = false;
     use_preview = false;
     need_redraw = true;
@@ -179,12 +178,10 @@ void refine_timer_callback(int value) {
 void display() {
   if (need_redraw) {
     if (use_preview) {
-      // Modo preview: renderiza rápido em baixa resolução
       render_preview();
       upscale_preview();
       need_redraw = false;
     } else {
-      // Modo normal: renderiza em alta resolução
       render();
     }
   }
@@ -209,12 +206,11 @@ void display() {
     info += "Obliqua";
     break;
   }
-  
-  // Mostrar indicador de modo preview
+
   if (use_preview || is_interacting) {
     info += " [PREVIEW]";
   }
-  
+
   for (char c : info) {
     glutBitmapCharacter(GLUT_BITMAP_HELVETICA_18, c);
   }
