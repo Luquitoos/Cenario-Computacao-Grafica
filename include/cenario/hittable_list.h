@@ -2,41 +2,66 @@
 #define HITTABLE_LIST_H
 
 #include "hittable.h"
-#include <vector>
+#include <algorithm>
 #include <memory>
+#include <string>
+#include <vector>
 
 class hittable_list : public hittable {
 public:
-    std::vector<std::shared_ptr<hittable>> objects;
+  std::vector<std::shared_ptr<hittable>> objects;
 
-    hittable_list() {}
-    hittable_list(std::shared_ptr<hittable> object) { add(object); }
+  hittable_list() {}
+  hittable_list(std::shared_ptr<hittable> object) { add(object); }
 
-    void clear() { objects.clear(); }
+  void clear() { objects.clear(); }
+
+  void add(std::shared_ptr<hittable> object) { objects.push_back(object); }
+
+  void remove_by_name_prefix(const std::string &prefix) {
+    objects.erase(
+        std::remove_if(objects.begin(), objects.end(),
+                       [&prefix](const std::shared_ptr<hittable> &obj) {
+                         return obj->get_name().substr(0, prefix.length()) ==
+                                prefix;
+                       }),
+        objects.end());
+  }
+
+  bool hit(const ray &r, double t_min, double t_max,
+           hit_record &rec) const override {
+    hit_record temp_rec;
+    bool hit_anything = false;
+    double closest_so_far = t_max;
+
+    for (const auto &object : objects) {
+      if (object->hit(r, t_min, closest_so_far, temp_rec)) {
+        hit_anything = true;
+        closest_so_far = temp_rec.t;
+        rec = temp_rec;
+      }
+    }
+
+    return hit_anything;
+  }
+
+  std::string get_name() const override { return "Scene"; }
+  
+  bool bounding_box(aabb& output_box) const override {
+    if (objects.empty()) return false;
     
-    void add(std::shared_ptr<hittable> object) {
-        objects.push_back(object);
+    aabb temp_box;
+    bool first = true;
+    
+    for (const auto& obj : objects) {
+      aabb obj_box;
+      if (obj->bounding_box(obj_box)) {
+        output_box = first ? obj_box : aabb::surrounding_box(output_box, obj_box);
+        first = false;
+      }
     }
-
-    bool hit(const ray& r, double t_min, double t_max, hit_record& rec) const override {
-        hit_record temp_rec;
-        bool hit_anything = false;
-        double closest_so_far = t_max;
-
-        for (const auto& object : objects) {
-            if (object->hit(r, t_min, closest_so_far, temp_rec)) {
-                hit_anything = true;
-                closest_so_far = temp_rec.t;
-                rec = temp_rec;
-            }
-        }
-
-        return hit_anything;
-    }
-
-    std::string get_name() const override {
-        return "Scene";
-    }
+    return !first;
+  }
 };
 
 #endif

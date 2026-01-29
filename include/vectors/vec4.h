@@ -17,10 +17,10 @@ public:
   double z() const { return e[2]; }
   double w() const { return e[3]; }
 
-  // Converter para vec3 (ignorando w ou dividindo por w)
+  
   vec3 to_vec3() const { return vec3(e[0], e[1], e[2]); }
 
-  // Converter para ponto 3D (divisão por w para coordenadas homogêneas)
+  
   vec3 to_point3() const {
     if (std::abs(e[3]) > 1e-10) {
       return vec3(e[0] / e[3], e[1] / e[3], e[2] / e[3]);

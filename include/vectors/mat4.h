@@ -9,14 +9,14 @@ class mat4 {
 public:
     double m[4][4];
 
-    // Construtor identidade
+    
     mat4() {
         for (int i = 0; i < 4; i++)
             for (int j = 0; j < 4; j++)
                 m[i][j] = (i == j) ? 1.0 : 0.0;
     }
 
-    // Construtor com valores
+    
     mat4(double m00, double m01, double m02, double m03,
          double m10, double m11, double m12, double m13,
          double m20, double m21, double m22, double m23,
@@ -27,7 +27,7 @@ public:
         m[3][0] = m30; m[3][1] = m31; m[3][2] = m32; m[3][3] = m33;
     }
 
-    // Multiplicação matriz x vetor
+    
     vec4 operator*(const vec4& v) const {
         return vec4(
             m[0][0]*v[0] + m[0][1]*v[1] + m[0][2]*v[2] + m[0][3]*v[3],
@@ -37,7 +37,7 @@ public:
         );
     }
 
-    // Multiplicação matriz x matriz
+    
     mat4 operator*(const mat4& other) const {
         mat4 result;
         for (int i = 0; i < 4; i++) {
@@ -51,9 +51,9 @@ public:
         return result;
     }
 
-    // ==================== TRANSFORMAÇÕES ====================
+    
 
-    // TRANSLAÇÃO (Requisito 1.4.1)
+    
     static mat4 translate(double tx, double ty, double tz) {
         return mat4(
             1, 0, 0, tx,
@@ -71,7 +71,7 @@ public:
         return translate(-tx, -ty, -tz);
     }
 
-    // ESCALA (Requisito 1.4.3)
+    
     static mat4 scale(double sx, double sy, double sz) {
         return mat4(
             sx, 0, 0, 0,
@@ -85,7 +85,7 @@ public:
         return scale(1.0/sx, 1.0/sy, 1.0/sz);
     }
 
-    // ROTAÇÃO EM X (Requisito 1.4.2)
+    
     static mat4 rotate_x(double angle_rad) {
         double c = std::cos(angle_rad);
         double s = std::sin(angle_rad);
@@ -101,7 +101,7 @@ public:
         return rotate_x(-angle_rad);
     }
 
-    // ROTAÇÃO EM Y
+    
     static mat4 rotate_y(double angle_rad) {
         double c = std::cos(angle_rad);
         double s = std::sin(angle_rad);
@@ -117,7 +117,7 @@ public:
         return rotate_y(-angle_rad);
     }
 
-    // ROTAÇÃO EM Z
+    
     static mat4 rotate_z(double angle_rad) {
         double c = std::cos(angle_rad);
         double s = std::sin(angle_rad);
@@ -133,8 +133,8 @@ public:
         return rotate_z(-angle_rad);
     }
 
-    // CISALHAMENTO (Requisito 1.4.4 - Bônus +0.5)
-    // Cisalhamento em X baseado em Y e Z
+    
+    
     static mat4 shear(double xy, double xz, double yx, double yz, double zx, double zy) {
         return mat4(
             1, xy, xz, 0,
@@ -145,12 +145,12 @@ public:
     }
 
     static mat4 shear_inverse(double xy, double xz, double yx, double yz, double zx, double zy) {
-        // Para cisalhamentos pequenos, a inversa aproximada é a negação
+        
         return shear(-xy, -xz, -yx, -yz, -zx, -zy);
     }
 
-    // ESPELHO EM PLANO ARBITRÁRIO (Requisito 1.4.5 - Bônus +0.5)
-    // Espelha em relação a um plano que passa pela origem com normal n
+    
+    
     static mat4 reflect(const vec3& n) {
         vec3 nn = unit_vector(n);
         double a = nn.x(), b = nn.y(), c = nn.z();
@@ -162,7 +162,7 @@ public:
         );
     }
 
-    // Espelho em relação a um plano arbitrário (ponto + normal)
+    
     static mat4 reflect_plane(const vec3& point, const vec3& normal) {
         mat4 T = translate(-point.x(), -point.y(), -point.z());
         mat4 R = reflect(normal);
@@ -170,7 +170,7 @@ public:
         return Tinv * R * T;
     }
 
-    // Transposta (útil para normais)
+    
     mat4 transpose() const {
         mat4 result;
         for (int i = 0; i < 4; i++)
@@ -179,7 +179,7 @@ public:
         return result;
     }
 
-    // Matriz identidade
+    
     static mat4 identity() {
         return mat4();
     }

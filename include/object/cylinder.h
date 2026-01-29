@@ -6,12 +6,10 @@
 #include <algorithm>
 #include <cmath>
 
-
-// CILINDRO (Requisito 1.3.1)
 class cylinder : public hittable {
 public:
-  point3 base_center; // Centro da base
-  vec3 axis;          // Vetor eixo normalizado (da base para o topo)
+  point3 base_center;
+  vec3 axis;
   double radius;
   double height;
   std::shared_ptr<material> mat;
@@ -30,11 +28,9 @@ public:
     vec3 best_normal;
     bool found = false;
 
-    // 1. Teste com o corpo do cilindro
     vec3 D = r.direction();
     vec3 L = r.origin() - base_center;
 
-    // Componentes perpendiculares ao eixo
     vec3 D_perp = D - dot(D, axis) * axis;
     vec3 L_perp = L - dot(L, axis) * axis;
 
@@ -55,10 +51,9 @@ public:
           point3 p = r.at(t);
           double h_point = dot(p - base_center, axis);
 
-          // Verificar se está dentro da altura do cilindro
           if (h_point >= 0 && h_point <= height) {
             best_t = t;
-            // Normal: vetor do eixo para o ponto
+
             point3 proj = base_center + h_point * axis;
             best_normal = unit_vector(p - proj);
             found = true;
@@ -67,7 +62,6 @@ public:
       }
     }
 
-    // 2. Teste com a tampa inferior (base)
     double t_base = hit_cap(r, base_center, -axis, t_min, best_t);
     if (t_base >= t_min && t_base < best_t) {
       best_t = t_base;
@@ -75,7 +69,6 @@ public:
       found = true;
     }
 
-    // 3. Teste com a tampa superior (topo)
     point3 top_center = base_center + height * axis;
     double t_top = hit_cap(r, top_center, axis, t_min, best_t);
     if (t_top >= t_min && t_top < best_t) {
@@ -94,12 +87,10 @@ public:
     rec.mat = mat;
     rec.object_name = name;
 
-    // Coordenadas UV
     vec3 local = rec.p - base_center;
     double h_point = dot(local, axis);
     rec.v = h_point / height;
 
-    // U baseado no ângulo ao redor do eixo
     vec3 radial = local - h_point * axis;
     rec.u = std::atan2(radial.z(), radial.x()) / (2.0 * 3.14159265358979) + 0.5;
 
@@ -109,13 +100,12 @@ public:
   std::string get_name() const override { return name; }
 
 private:
-  // Teste de interseção com tampa circular
   double hit_cap(const ray &r, const point3 &cap_center, const vec3 &cap_normal,
                  double t_min, double t_max) const {
     double denom = dot(r.direction(), cap_normal);
 
     if (std::abs(denom) < 1e-8) {
-      return t_max + 1; // Paralelo
+      return t_max + 1;
     }
 
     double t = dot(cap_center - r.origin(), cap_normal) / denom;
@@ -124,7 +114,6 @@ private:
       return t_max + 1;
     }
 
-    // Verificar se está dentro do círculo
     point3 p = r.at(t);
     vec3 v = p - cap_center;
     double dist_sq = dot(v, v) - std::pow(dot(v, cap_normal), 2);
@@ -134,6 +123,23 @@ private:
     }
 
     return t;
+  }
+
+public:
+  bool bounding_box(aabb &output_box) const override {
+
+    point3 top_center = base_center + height * axis;
+
+    double min_x = std::fmin(base_center.x() - radius, top_center.x() - radius);
+    double min_y = std::fmin(base_center.y() - radius, top_center.y() - radius);
+    double min_z = std::fmin(base_center.z() - radius, top_center.z() - radius);
+
+    double max_x = std::fmax(base_center.x() + radius, top_center.x() + radius);
+    double max_y = std::fmax(base_center.y() + radius, top_center.y() + radius);
+    double max_z = std::fmax(base_center.z() + radius, top_center.z() + radius);
+
+    output_box = aabb(point3(min_x, min_y, min_z), point3(max_x, max_y, max_z));
+    return true;
   }
 };
 

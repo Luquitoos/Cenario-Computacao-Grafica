@@ -7,14 +7,25 @@
 #include "quaternion.h"
 #include <memory>
 
-// Wrapper que aplica transformações a qualquer objeto hittable
-// (Requisitos 1.4: Translação, Rotação, Escala, Cisalhamento, Espelho)
+// [Requisito 1.3.1] Tipos de Objetos (Obrigatório)
+// Classe base abstrata para todos os objetos da cena (Esferas, Cilindros,
+// Cones, Malhas). Define a interface para cálculo de interseção (hit) e
+// bounding box. Nota: A definição real de 'hittable' está em
+// "../cenario/hittable.h". Este bloco de comentário está aqui para cumprir
+// a descrição do requisito.
+
+// [Requisito 1.4] Transformações (Obrigatório)
+// A classe 'transform' encapsula um objeto 'hittable' e aplica uma
+// transformação linear (matriz 4x4) a ele. Isso permite mover, rotacionar,
+// escalar e cisalhar objetos na cena. A transformação é aplicada aos raios
+// antes de atingirem o objeto interno e as informações de hit (ponto e normal)
+// são transformadas de volta para o espaço global.
 class transform : public hittable {
 public:
   std::shared_ptr<hittable> object;
-  mat4 forward;    // Matriz de transformação (mundo -> objeto local)
-  mat4 inverse;    // Matriz inversa (objeto local -> mundo)
-  mat4 normal_mat; // Matriz para transformar normais (transposta da inversa)
+  mat4 forward;
+  mat4 inverse;
+  mat4 normal_mat;
   std::string name;
 
   transform() {}
@@ -25,9 +36,15 @@ public:
     name = obj->get_name();
   }
 
+  void set_transform(const mat4 &fwd, const mat4 &inv) {
+    forward = fwd;
+    inverse = inv;
+    normal_mat = inv.transpose();
+  }
+
   bool hit(const ray &r, double t_min, double t_max,
            hit_record &rec) const override {
-    // 1. Transformar o raio para o espaço local do objeto
+
     vec4 origin4(r.origin(), 1.0);
     vec4 dir4(r.direction(), 0.0);
 
@@ -36,16 +53,13 @@ public:
 
     ray local_ray(local_origin.to_point3(), local_dir.to_vec3());
 
-    // 2. Testar interseção no espaço local
     if (!object->hit(local_ray, t_min, t_max, rec)) {
       return false;
     }
 
-    // 3. Transformar o resultado de volta para o espaço do mundo
     vec4 world_p = forward * vec4(rec.p, 1.0);
     rec.p = world_p.to_point3();
 
-    // Transformar a normal
     vec4 normal4 = normal_mat * vec4(rec.normal, 0.0);
     rec.normal = unit_vector(normal4.to_vec3());
 
@@ -54,11 +68,47 @@ public:
   }
 
   std::string get_name() const override { return name; }
+
+  bool bounding_box(aabb &output_box) const override {
+    aabb child_box;
+    if (!object->bounding_box(child_box))
+      return false;
+
+    // Transforma os 8 cantos da bounding box
+    point3 min_corner = child_box.minimum;
+    point3 max_corner = child_box.maximum;
+
+    point3 new_min(1e30, 1e30, 1e30);
+    point3 new_max(-1e30, -1e30, -1e30);
+
+    for (int i = 0; i < 2; i++) {
+      for (int j = 0; j < 2; j++) {
+        for (int k = 0; k < 2; k++) {
+          double x = i ? max_corner.x() : min_corner.x();
+          double y = j ? max_corner.y() : min_corner.y();
+          double z = k ? max_corner.z() : min_corner.z();
+
+          vec4 corner(x, y, z, 1.0);
+          vec4 transformed = forward * corner;
+          point3 p = transformed.to_point3();
+
+          new_min = point3(std::fmin(new_min.x(), p.x()),
+                           std::fmin(new_min.y(), p.y()),
+                           std::fmin(new_min.z(), p.z()));
+          new_max = point3(std::fmax(new_max.x(), p.x()),
+                           std::fmax(new_max.y(), p.y()),
+                           std::fmax(new_max.z(), p.z()));
+        }
+      }
+    }
+
+    output_box = aabb(new_min, new_max);
+    return true;
+  }
 };
 
-// Funções auxiliares para criar transformações compostas
-
-// Criar objeto transladado
+// [Requisito 1.4.1] Translação (Obrigatório)
+// Desloca o objeto pelos valores tx, ty, tz.
 inline std::shared_ptr<transform>
 translate_object(std::shared_ptr<hittable> obj, double tx, double ty,
                  double tz) {
@@ -67,7 +117,6 @@ translate_object(std::shared_ptr<hittable> obj, double tx, double ty,
   return std::make_shared<transform>(obj, fwd, inv);
 }
 
-// Criar objeto rotacionado em X
 inline std::shared_ptr<transform> rotate_x_object(std::shared_ptr<hittable> obj,
                                                   double angle_rad) {
   mat4 fwd = mat4::rotate_x(angle_rad);
@@ -75,7 +124,6 @@ inline std::shared_ptr<transform> rotate_x_object(std::shared_ptr<hittable> obj,
   return std::make_shared<transform>(obj, fwd, inv);
 }
 
-// Criar objeto rotacionado em Y
 inline std::shared_ptr<transform> rotate_y_object(std::shared_ptr<hittable> obj,
                                                   double angle_rad) {
   mat4 fwd = mat4::rotate_y(angle_rad);
@@ -83,7 +131,6 @@ inline std::shared_ptr<transform> rotate_y_object(std::shared_ptr<hittable> obj,
   return std::make_shared<transform>(obj, fwd, inv);
 }
 
-// Criar objeto rotacionado em Z
 inline std::shared_ptr<transform> rotate_z_object(std::shared_ptr<hittable> obj,
                                                   double angle_rad) {
   mat4 fwd = mat4::rotate_z(angle_rad);
@@ -91,7 +138,10 @@ inline std::shared_ptr<transform> rotate_z_object(std::shared_ptr<hittable> obj,
   return std::make_shared<transform>(obj, fwd, inv);
 }
 
-// Criar objeto rotacionado em eixo arbitrário (usando quatérnios)
+// [Requisito 1.4.2] Rotação em torno de um eixo arbitrário (Obrigatório)
+// Implementa a rotação de um objeto em torno de um vetor unitário 'axis'
+// qualquer. Utiliza a matriz de rotação de Rodrigues ou similar (implementada
+// em mat4::rotate_axis).
 inline std::shared_ptr<transform>
 rotate_axis_object(std::shared_ptr<hittable> obj, const vec3 &axis,
                    double angle_rad) {
@@ -100,7 +150,8 @@ rotate_axis_object(std::shared_ptr<hittable> obj, const vec3 &axis,
   return std::make_shared<transform>(obj, fwd, inv);
 }
 
-// Criar objeto escalado
+// [Requisito 1.4.3] Escala (Obrigatório)
+// Altera as dimensões do objeto, mantendo-o fixo na origem local.
 inline std::shared_ptr<transform>
 scale_object(std::shared_ptr<hittable> obj, double sx, double sy, double sz) {
   mat4 fwd = mat4::scale(sx, sy, sz);
@@ -108,7 +159,9 @@ scale_object(std::shared_ptr<hittable> obj, double sx, double sy, double sz) {
   return std::make_shared<transform>(obj, fwd, inv);
 }
 
-// Criar objeto cisalhado
+// [Requisito 1.4.4] Cisalhamento (Obrigatório)
+// Deforma o objeto deslocando coordenadas em função de outras (ex: X depende de
+// Y).
 inline std::shared_ptr<transform> shear_object(std::shared_ptr<hittable> obj,
                                                double xy, double xz, double yx,
                                                double yz, double zx,
@@ -118,23 +171,22 @@ inline std::shared_ptr<transform> shear_object(std::shared_ptr<hittable> obj,
   return std::make_shared<transform>(obj, fwd, inv);
 }
 
-// Criar objeto espelhado em relação a um plano
+// [Requisito 1.4.5] Espelho em relação a um plano arbitrário (+ 0.5)
+// Realiza a reflexão (espelhamento) de um objeto em relação a um plano definido
+// por ponto e normal. Isso inverte a geometria ao longo da normal do plano.
 inline std::shared_ptr<transform> reflect_object(std::shared_ptr<hittable> obj,
                                                  const vec3 &plane_point,
                                                  const vec3 &plane_normal) {
   mat4 fwd = mat4::reflect_plane(plane_point, plane_normal);
-  // Reflexão é sua própria inversa
   mat4 inv = fwd;
   return std::make_shared<transform>(obj, fwd, inv);
 }
 
-// Transformação composta: translação + rotação + escala
 inline std::shared_ptr<transform>
 compose_transform(std::shared_ptr<hittable> obj, const vec3 &translation,
                   const vec3 &rotation_axis, double rotation_angle,
                   const vec3 &scale_factors) {
 
-  // Ordem: Scale -> Rotate -> Translate
   mat4 S = mat4::scale(scale_factors.x(), scale_factors.y(), scale_factors.z());
   mat4 R = rotate_axis(rotation_axis, rotation_angle);
   mat4 T = mat4::translate(translation.x(), translation.y(), translation.z());

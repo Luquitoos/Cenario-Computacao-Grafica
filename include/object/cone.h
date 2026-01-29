@@ -6,13 +6,12 @@
 #include <algorithm>
 #include <cmath>
 
-// CONE (Requisito 1.3.1)
 class cone : public hittable {
 public:
-  point3 apex;   // Ápice (ponta) do cone
-  vec3 axis;     // Vetor eixo normalizado (do ápice para a base)
-  double angle;  // Ângulo de abertura (em radianos)
-  double height; // Altura do cone
+  point3 apex;
+  vec3 axis;
+  double angle;
+  double height;
   std::shared_ptr<material> mat;
   std::string name;
 
@@ -22,14 +21,13 @@ public:
       : apex(ap), axis(unit_vector(ax)), angle(ang), height(h), mat(m),
         name(obj_name) {}
 
-  // Construtor alternativo: base center e raio
   static cone from_base(const point3 &base_center, const vec3 &ax,
                         double base_radius, double h,
                         std::shared_ptr<material> m,
                         const std::string &obj_name = "Cone") {
     cone c;
     c.axis = unit_vector(ax);
-    c.apex = base_center - h * c.axis; // Ápice está acima da base
+    c.apex = base_center - h * c.axis;
     c.angle = std::atan(base_radius / h);
     c.height = h;
     c.mat = m;
@@ -52,7 +50,6 @@ public:
     double D_dot_A = dot(D, axis);
     double CO_dot_A = dot(CO, axis);
 
-    // Coeficientes da equação quadrática para o cone
     double a = D_dot_A * D_dot_A - cos2_a;
     double b = 2.0 * (D_dot_A * CO_dot_A - dot(D, CO) * cos2_a);
     double c = CO_dot_A * CO_dot_A - dot(CO, CO) * cos2_a;
@@ -76,17 +73,16 @@ public:
           point3 p = r.at(t);
           double h_point = dot(p - apex, axis);
 
-          // Verificar se está dentro da altura e na parte correta do cone
           if (h_point >= 0 && h_point <= height) {
             best_t = t;
-            // Normal do cone
+
             vec3 cp = p - apex;
             vec3 proj = h_point * axis;
             vec3 radial = cp - proj;
             double tan_a = std::tan(angle);
             best_normal =
                 unit_vector(radial - tan_a * h_point * unit_vector(radial));
-            // Correção: normal apontando para fora
+
             best_normal =
                 unit_vector(cp - (1.0 + tan_a * tan_a) * h_point * axis);
             best_normal = unit_vector(unit_vector(radial) - tan_a * axis);
@@ -96,7 +92,6 @@ public:
       }
     }
 
-    // Teste com a tampa circular da base
     point3 base_center = apex + height * axis;
     double base_radius = height * std::tan(angle);
     double t_base = hit_base(r, base_center, base_radius, t_min, best_t);
@@ -116,7 +111,6 @@ public:
     rec.mat = mat;
     rec.object_name = name;
 
-    // Coordenadas UV
     vec3 cp = rec.p - apex;
     double h_point = dot(cp, axis);
     rec.v = h_point / height;
@@ -151,6 +145,23 @@ private:
     }
 
     return t;
+  }
+
+public:
+  bool bounding_box(aabb &output_box) const override {
+    point3 base_center = apex + height * axis;
+    double base_radius = height * std::tan(angle);
+
+    double min_x = std::fmin(apex.x(), base_center.x() - base_radius);
+    double min_y = std::fmin(apex.y(), base_center.y() - base_radius);
+    double min_z = std::fmin(apex.z(), base_center.z() - base_radius);
+
+    double max_x = std::fmax(apex.x(), base_center.x() + base_radius);
+    double max_y = std::fmax(apex.y(), base_center.y() + base_radius);
+    double max_z = std::fmax(apex.z(), base_center.z() + base_radius);
+
+    output_box = aabb(point3(min_x, min_y, min_z), point3(max_x, max_y, max_z));
+    return true;
   }
 };
 

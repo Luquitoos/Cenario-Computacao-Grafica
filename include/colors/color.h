@@ -42,14 +42,12 @@ public:
     return *this;
   }
 
-  // Clamp valores entre 0 e 1
   color clamp() const {
     return color(std::max(0.0, std::min(1.0, r)),
                  std::max(0.0, std::min(1.0, g)),
                  std::max(0.0, std::min(1.0, b)));
   }
 
-  // Converter para bytes (0-255)
   int r_byte() const {
     return static_cast<int>(255.999 * std::max(0.0, std::min(1.0, r)));
   }
@@ -63,7 +61,6 @@ public:
 
 inline color operator*(double t, const color &c) { return c * t; }
 
-// Cores pré-definidas
 namespace colors {
 const color black(0, 0, 0);
 const color white(1, 1, 1);
